@@ -1,189 +1,263 @@
-import { Link, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import PeopleSearch from "./PeopleSearch";
+import NotificationsModal from "./NotificationsModal";
+import API_BASE_URL from "../config/api.js";
+import logo1 from "../assets/1.png";
 
-export default function Navbar({ signedIn, setSignedIn, role }) {
+export default function Navbar({ signedIn, role }) {
   const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
+  const location = useLocation();
+  const [hasUpdates, setHasUpdates] = useState(false);
+
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    setSignedIn(false);
-    setOpen(false);
-    navigate("/login");
+    localStorage.removeItem("authFormMode");
+    navigate("/");
   };
 
+  const isAuthPage =
+    location.pathname === "/auth" ||
+    location.pathname === "/login" ||
+    location.pathname === "/signup" ||
+    location.pathname === "/signUp";
+
+  const [authFormMode, setAuthFormMode] = useState(
+    () => localStorage.getItem("authFormMode") || "login"
+  );
+  const [profileCompleted, setProfileCompleted] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   /* =========================
-     HOSPITAL NAVBAR
+     AUTH FORM MODE SYNC
      ========================= */
-  if (signedIn && role === "hospital") {
-    return (
-      <nav className="w-full bg-white border-b shadow-sm">
-        <div className="w-full px-6 py-2 flex items-center">
-          {/* Logo */}
-          <Link to="/" className="text-2xl font-bold text-blue-600">
-            DocSpace 🏥
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setAuthFormMode(localStorage.getItem("authFormMode") || "login");
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    handleStorageChange();
+
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, [location.pathname]);
+
+  /* =========================
+     PROFILE COMPLETED
+     ========================= */
+  useEffect(() => {
+    if (!signedIn || role === "hospital" || role === "admin") return;
+
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    fetch(`${API_BASE_URL}/profile/medical-resume`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setProfileCompleted(!!data?.profile_completed))
+      .catch(() => {});
+  }, [signedIn, role]);
+
+  useEffect(() => {
+     if (!signedIn) return;
+
+     const token = localStorage.getItem("token");
+     if (!token) return;
+
+     const checkNotifications = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/notifications`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) return;
+
+      const data = await res.json();
+      setHasUpdates((data.notifications || []).length > 0);
+      } catch {
+      setHasUpdates(false);
+    }
+  };
+
+  checkNotifications();
+}, [signedIn]);
+
+
+  return (
+    <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6">
+        <div className="h-16 flex items-center justify-between gap-3">
+
+          {/* LOGO */}
+          <Link to="/" className="shrink-0 flex items-center">
+            <img src={logo1} alt="DocSpace Logo" className="h-8 sm:h-10" />
           </Link>
 
-          {/* Hospital Links */}
-          <div className="ml-10 flex space-x-8 text-gray-700 font-medium">
-            <Link to="/hospital-profile" className="hover:text-blue-600">
-              Hospital Profile
-            </Link>
-            <Link to="/jobs" className="hover:text-blue-600">
-              Post Jobs
-            </Link>
-            <Link to="/applications" className="hover:text-blue-600">
-              Applications
-            </Link>
-            <Link to="/connect" className="hover:text-blue-600">
-              Connect
-            </Link>
-          </div>
+          {/* SEARCH */}
+          {signedIn && (
+            <div className="flex-1 max-w-full sm:max-w-2xl mx-1 sm:mx-2 md:mx-4 min-w-0">
+              <div className="relative">
+                <PeopleSearch />
+              </div>
+            </div>
+          )}
 
-          {/* Right */}
-          <div className="ml-auto relative">
-            <button
-              onClick={() => setOpen(!open)}
-              className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold"
-            >
-              H
-            </button>
+          {/* DESKTOP NAV */}
+          <div className="hidden lg:flex items-center gap-2">
+                        {/* USER NAV */}
+            {signedIn && role !== "hospital" && role !== "admin" && (
+              <>
+                <NavItem to="/find-doctor" icon="person_search" label="Find Doctor" />
+                <NavItem to="/search/jobs" icon="work" label="Find Jobs" />
+                <NavItem to="/resume" icon="description" label="Resume" />
+                <NavItem to="/messages" icon="chat" label="Chat" />
+                {profileCompleted && (
+                  <NavItem to="/get-verified" icon="verified" label="Verify" />
+                )}
+              </>
+            )}
 
-            {open && (
-              <div className="absolute right-0 mt-2 w-44 bg-white rounded-lg shadow-lg border z-50">
-                <div className="flex items-center justify-between px-4 py-2 border-b">
-                  <span className="font-semibold text-gray-700">Menu</span>
-                  <button
-                    onClick={() => setOpen(false)}
-                    className="text-gray-500 hover:text-gray-700 text-xl leading-none"
-                    aria-label="Close menu"
-                  >
-                    ×
-                  </button>
-                </div>
+            {/* HOSPITAL NAV */}
+            {signedIn && role === "hospital" && (
+              <>
+                <NavItem to="/find-doctor" icon="person_search" label="Find Doctor" />
+                <NavItem to="/hospital-profile" icon="person" label="Profile" />
+                <NavItem to="/post-job" icon="add_business" label="Post Job" />
+                <NavItem to="/posted-jobs" icon="work" label="Jobs" />
+                <NavItem to="/messages" icon="chat" label="Chat" />
+              </>
+            )}
+
+            {/* ADMIN NAV */}
+            {signedIn && role === "admin" && (
+              <>
+                <NavItem to="/admin" icon="dashboard" label="Dashboard" />
+                <NavItem to="/admin-hospital" icon="local_hospital" label="Hospitals" />
+              </>
+            )}
+
+            {/* NOTIFICATIONS */}
+            {signedIn && (
+              <button
+               onClick={() => setShowNotifications(true)}
+               className="relative w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100"
+              >
+                <span className="material-symbols-outlined">notifications</span>
+
+                {hasUpdates && (
+                <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full" />
+                )}
+              </button>
+            )}
+
+            {/* PROFILE + LOGOUT */}
+            {signedIn ? (
+              <>
                 <Link
-                  to="/hospital-profile"
-                  onClick={() => setOpen(false)}
-                  className="block px-4 py-2 hover:bg-gray-100"
+                  to="/dashboard"
+                  className="w-10 h-10 rounded-full bg-red-400 text-white flex items-center justify-center font-semibold"
                 >
-                  Profile
+                  {role === "admin" ? "A" : role === "hospital" ? "H" : "U"}
                 </Link>
-                <Link
-                  to="/settings"
-                  onClick={() => setOpen(false)}
-                  className="block px-4 py-2 hover:bg-gray-100"
-                >
-                  Settings
-                </Link>
+
                 <button
                   onClick={handleLogout}
-                  className="w-full text-left px-4 py-2 text-red-600 hover:bg-red-50"
+                  className="flex items-center gap-1 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
                 >
+                  <span className="material-symbols-outlined">logout</span>
                   Logout
                 </button>
-              </div>
+              </>
+            ) : !isAuthPage && (
+              <button
+                onClick={() => navigate("/auth")}
+                className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+              >
+                Login
+              </button>
             )}
           </div>
-        </div>
-      </nav>
-    );
-  }
 
-  /* =========================
-     DEFAULT NAVBAR (DOCTOR / OTHERS)
-     ========================= */
-  return (
-    <nav className="w-full bg-white border-b shadow-sm">
-      <div className="relative w-full px-6 py-2 flex items-center">
-        {/* Logo */}
-        <Link to="/" className="text-2xl font-bold text-blue-600">
-          DocSpace 🩺
-        </Link>
-
-        {/* Center links */}
-        <div className="absolute left-1/2 -translate-x-1/2 flex space-x-8 text-gray-700 font-medium">
-          <Link
-            to={ "/resume" }
-            className="hover:text-blue-600 transition"
-          >
-            Resume
-          </Link>
-          <Link className="hover:text-blue-600 transition" to="/who">
-            WHO
-          </Link>
-          <Link className="hover:text-blue-600 transition" to="/messages">
-            Chat
-          </Link>
-          <Link className="hover:text-blue-600 transition" to="/get-verified">
-            Get-Verified
-          </Link>
-        </div>
-
-        {/* Right side */}
-        <div className="ml-auto relative flex items-center gap-4">
-          {role === "admin" && (
-            <Link
-              to="/admin"
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium"
-            >
-              Admin Dashboard
-            </Link>
-          )}
-          {signedIn ? (
-            <>
+          {/* MOBILE BUTTONS */}
+          <div className="lg:hidden flex items-center gap-2">
+            {signedIn && (
               <button
-                onClick={() => setOpen(!open)}
-                className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold"
+                onClick={() => setShowNotifications(true)}
+                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100"
               >
-                U
+                <span className="material-symbols-outlined">notifications</span>
               </button>
+            )}
 
-              {open && (
-                <div className="absolute right-0 mt-2 w-44 bg-white rounded-lg shadow-lg border z-50">
-                  <div className="flex items-center justify-between px-4 py-2 border-b">
-                    <span className="font-semibold text-gray-700">Menu</span>
-                    <button
-                      onClick={() => setOpen(false)}
-                      className="text-gray-500 hover:text-gray-700 text-xl leading-none"
-                      aria-label="Close menu"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <Link
-                    to="/"
-                    onClick={() => setOpen(false)}
-                    className="block px-4 py-2 hover:bg-gray-100"
-                  >
-                    Profile
-                  </Link>
-                  <Link
-                    to="/"
-                    onClick={() => setOpen(false)}
-                    className="block px-4 py-2 hover:bg-gray-100"
-                  >
-                    Settings
-                  </Link>
-                  <button
-                    onClick={handleLogout}
-                    className="w-full text-left px-4 py-2 text-red-600 hover:bg-red-50"
-                  >
-                    Logout
-                  </button>
-                </div>
-              )}
-            </>
-          ) : (
             <button
-              className="text-blue-600 hover:underline"
-              onClick={() => navigate("/login")}
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100"
             >
-              Log in
+              <span className="material-symbols-outlined">
+                {mobileMenuOpen ? "close" : "menu"}
+              </span>
             </button>
-          )}
+          </div>
         </div>
+
+        {/* MOBILE MENU */}
+        {mobileMenuOpen && (
+          <div className="lg:hidden border-t py-4 space-y-2">
+            {signedIn && role === "hospital" && (
+              <>
+                <MobileNavItem to="/hospital-profile" label="Profile" />
+                <MobileNavItem to="/posted-jobs" label="Jobs" />
+              </>
+            )}
+
+            {signedIn && role === "admin" && (
+              <>
+                <MobileNavItem to="/admin" label="Dashboard" />
+                <MobileNavItem to="/admin-hospital" label="Hospitals" />
+              </>
+            )}
+
+            {signedIn && (
+              <button
+                onClick={handleLogout}
+                className="w-full text-left px-4 py-2 text-red-600"
+              >
+                Logout
+              </button>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* NOTIFICATIONS MODAL */}
+      {signedIn && (
+        <NotificationsModal
+          isOpen={showNotifications}
+          onClose={() => setShowNotifications(false)}
+        />
+      )}
     </nav>
   );
 }
+
+/* HELPERS */
+function NavItem({ to, icon, label }) {
+  return (
+    <Link to={to} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg">
+      <span className="material-symbols-outlined">{icon}</span>
+      {label}
+    </Link>
+  );
+}
+
+function MobileNavItem({ to, label }) {
+  return (
+    <Link to={to} className="block px-4 py-2 hover:bg-gray-100">
+      {label}
+    </Link>
+  );
+}
+

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import API_BASE_URL from "../config/api.js";
 import HospitalDocUpload from "../components/HospitalDocUpload.jsx";
+import logo1 from "../assets/1.png";
 
 export default function HospitalProfile() {
   const [form, setForm] = useState({
@@ -17,9 +18,9 @@ export default function HospitalProfile() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
 
-  /* VERIFICATION STATUS (NEW, SEPARATE LOGIC) */
+  /* VERIFICATION STATUS */
   const [verificationStatus, setVerificationStatus] = useState(null);
-  
+  const [rejectionMessage, setRejectionMessage] = useState(null);
 
   const token = localStorage.getItem("token");
 
@@ -50,7 +51,7 @@ export default function HospitalProfile() {
 
   /* FETCH VERIFICATION STATUS (NEW) */
 
-  const refreshVerificationStatus = async () => {
+ const refreshVerificationStatus = async () => {
   try {
     const res = await fetch(`${API_BASE_URL}/hospital/status`, {
       headers: {
@@ -60,13 +61,28 @@ export default function HospitalProfile() {
 
     const data = await res.json();
 
-    if (res.ok) {
-      setVerificationStatus(data.verification_status);
+    if (!res.ok) return;
+
+    setVerificationStatus(data.verification_status);
+
+    if (data.verification_status === "rejected") {
+      const msgRes = await fetch(`${API_BASE_URL}/hospital/message`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const msgData = await msgRes.json();
+
+      if (msgRes.ok) {
+        setRejectionMessage(msgData.rejection_reason);
+      }
     }
   } catch (err) {
     console.error("Error refreshing verification status", err);
   }
 };
+
 
 useEffect(()=>{
   refreshVerificationStatus();
@@ -81,6 +97,7 @@ useEffect(()=>{
   const canShowDocuments =
     verificationStatus === "not_submitted" ||
     verificationStatus === "incomplete" ||
+    verificationStatus === "rejected" ||
     verificationStatus === null;
 
   /* SUBMIT PROFILE (UNCHANGED) */
@@ -116,17 +133,54 @@ useEffect(()=>{
 
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4">
+      {/* Logo Section */}
+      <div className="max-w-4xl mx-auto mb-6 text-center">
+        <img 
+          src={logo1} 
+          alt="DocSpace Logo" 
+          className="h-16 sm:h-24 md:h-32 w-auto object-contain mx-auto"
+        />
+      </div>
+       {/* REJECTION MESSAGE */}
+       {verificationStatus === "rejected" && (
+        <div className="max-w-4xl mx-auto mb-8">
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-6 shadow-sm">
+           <h3 className="text-lg font-semibold text-red-700 mb-2">
+             ❌ Your hospital profile was rejected
+           </h3>
+
+           <p className="text-sm text-red-600">
+             Please review the details below, make the required changes, and
+             resubmit your documents.
+           </p>
+
+           {rejectionMessage && (
+             <div className="mt-4 bg-white border border-red-100 rounded-xl p-4">
+               <p className="text-sm font-medium text-gray-700 mb-1">
+                 Rejection reason
+               </p>
+               <p className="text-sm text-gray-600 leading-relaxed">
+                 {rejectionMessage}
+               </p>
+             </div>
+           )}
+         </div>
+        </div>
+      )}
+
+
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-10">
         {/* HEADER */}
         <div className="flex items-center justify-between mb-8">
           <h2 className="text-3xl font-bold text-gray-800">
             Hospital Profile
           </h2>
+         
 
           {!editing && !isLocked && (
             <button
               onClick={() => setEditing(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium transition"
+              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white px-5 py-2 rounded-lg font-medium transition"
             >
               Edit Profile
             </button>
@@ -230,11 +284,11 @@ useEffect(()=>{
         <div className="mt-12 border-t pt-8">
 
           {verificationStatus === "pending" && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
-              <h3 className="text-lg font-semibold text-blue-700">
+            <div className="bg-[var(--color-accent)] border border-red-200 rounded-lg p-6 text-center">
+              <h3 className="text-lg font-semibold text-[var(--color-primary-dark)]">
                 Thank you for reaching out
               </h3>
-              <p className="text-sm text-blue-600 mt-2">
+              <p className="text-sm text-[var(--color-primary)] mt-2">
                 We have received your documents and will reach out to you soon.
               </p>
             </div>
@@ -277,7 +331,7 @@ function Input({ label, value, onChange, disabled }) {
         {label}
       </label>
       <input
-        className={`w-full px-4 py-2 border rounded-lg transition focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+        className={`w-full px-4 py-2 border rounded-lg transition focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
           disabled
             ? "bg-gray-100 text-gray-500 cursor-not-allowed"
             : "bg-white"

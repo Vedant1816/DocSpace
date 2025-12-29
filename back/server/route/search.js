@@ -37,7 +37,7 @@ router.get("/users", async (req, res) => {
       console.error("[Search Error] Users:", usersError.message);
     }
 
-    // Search hospitals
+    // Search hospitals (by name, city, or state)
     const { data: hospitals, error: hospitalsError } = await supabase
       .from("hospitals")
       .select(`
@@ -49,7 +49,7 @@ router.get("/users", async (req, res) => {
         hospital_type
       `)
       .or(
-        `hospital_name.ilike.${search},hospital_city.ilike.${search}`
+        `hospital_name.ilike.${search},hospital_city.ilike.${search},hospital_state.ilike.${search}`
       )
       .limit(10);
 
@@ -75,6 +75,61 @@ router.get("/users", async (req, res) => {
 
   } catch (err) {
     console.error("[Search Error]", err.message);
+    return res.status(500).json({ error: "Search failed" });
+  }
+});
+
+/* =========================
+   🔍 SEARCH DOCTORS WITH FILTERS
+   ========================= */
+router.get("/doctors", async (req, res) => {
+  const { name, department, council, registration_number } = req.query;
+
+  try {
+    let query = supabase
+      .from("users")
+      .select(`
+        id,
+        name,
+        designation,
+        specialization,
+        registration_number,
+        registration_council,
+        hospital_affiliation,
+        qualifications,
+        verification_status,
+        role
+      `)
+      .eq("profile_completed", true)
+      .eq("role", "doctor");
+
+    // Apply filters
+    if (name) {
+      query = query.ilike("name", `%${name}%`);
+    }
+
+    if (department) {
+      query = query.ilike("specialization", `%${department}%`);
+    }
+
+    if (council) {
+      query = query.ilike("registration_council", `%${council}%`);
+    }
+
+    if (registration_number) {
+      query = query.ilike("registration_number", `%${registration_number}%`);
+    }
+
+    const { data: doctors, error } = await query.order("name", { ascending: true });
+
+    if (error) {
+      console.error("[Search Doctors Error]:", error.message);
+      return res.status(500).json({ error: "Failed to search doctors" });
+    }
+
+    res.json({ doctors: doctors || [] });
+  } catch (err) {
+    console.error("[Search Doctors Error]:", err.message);
     return res.status(500).json({ error: "Search failed" });
   }
 });

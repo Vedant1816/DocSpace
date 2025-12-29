@@ -8,24 +8,25 @@ export default function MedicalResume() {
   const [editMode, setEditMode] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setLoading(false);
-      return;
-    }
+ useEffect(() => {
+  const token = localStorage.getItem("token");
+  if (!token) {
+    setLoading(false);
+    return;
+  }
 
-    fetch(`${API_BASE_URL}/profile/medical-resume`, {
-      headers: { Authorization: `Bearer ${token}` },
+  fetch(`${API_BASE_URL}/profile/medical-resume`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+    .then((res) => res.json())
+    .then((res) => {
+      setData(res);
+      setEditMode(false);
+      setLoading(false);
     })
-      .then((res) => res.json())
-      .then((res) => {
-        setData(res);
-        setEditMode(false); // always start in view mode
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
+    .catch(() => setLoading(false));
+}, []);
+
 
   if (loading) {
     return (
@@ -42,13 +43,24 @@ export default function MedicalResume() {
       </div>
     );
   }
+  
+  const isEditLocked =
+  data?.verification_status === "pending" ||
+  data?.verification_status === "approved";
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-100 px-4 py-10 flex justify-center">
-      <div className="w-full max-w-5xl bg-white rounded-2xl shadow-xl p-8">
+    <div className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-100 px-4 sm:px-6 py-6 sm:py-8 md:py-10 flex justify-center">
+      <div className="w-full max-w-5xl bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 md:p-8">
+        {isEditLocked && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+            {data.verification_status === "pending"
+             ? "Your profile is currently under verification. Editing is temporarily disabled."
+             : "Your profile has been verified. Editing is no longer allowed."}
+          </div>
+        )}
 
         {!data.profile_completed && (
-          <div className="mb-4 p-3 bg-yellow-50 text-yellow-800 rounded-lg">
+          <div className="mb-3 sm:mb-4 p-2.5 sm:p-3 bg-yellow-50 text-yellow-800 rounded-lg text-xs sm:text-sm">
             Your profile is not complete. Please fill and submit.
           </div>
         )}
@@ -62,7 +74,11 @@ export default function MedicalResume() {
             }}
           />
         ) : (
-          <ViewResume data={data} onEdit={() => setEditMode(true)} />
+          <ViewResume
+           data={data}
+           onEdit={() => setEditMode(true)}
+           editLocked={isEditLocked}
+          />
         )}
       </div>
     </div>
@@ -71,14 +87,14 @@ export default function MedicalResume() {
 
 /* ================= VIEW MODE ================= */
 
-function ViewResume({ data, onEdit }) {
+function ViewResume({ data, onEdit, editLocked }) {
   return (
     <>
-      <h2 className="text-3xl font-bold text-gray-800 mb-6">
+      <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-4 sm:mb-6">
         🩺 Medical Resume
       </h2>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
         <ResumeRow label="Role" value={data.role} />
         <ResumeRow label="Name" value={data.name} />
         <ResumeRow label="Email" value={data.email} />
@@ -102,16 +118,23 @@ function ViewResume({ data, onEdit }) {
         />
       </div>
 
-      <div className="mt-6">
-        <p className="text-sm text-gray-500 mb-1">Bio</p>
-        <p className="bg-gray-50 p-4 rounded-lg text-gray-800">
+      <div className="mt-4 sm:mt-6">
+        <p className="text-xs sm:text-sm text-gray-500 mb-1">Bio</p>
+        <p className="bg-gray-50 p-3 sm:p-4 rounded-lg text-gray-800 text-sm sm:text-base">
           {data.bio || "-"}
         </p>
       </div>
 
       <button
         onClick={onEdit}
-        className="mt-8 w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition"
+        disabled={editLocked}
+        className={`mt-6 sm:mt-8 w-full py-2.5 sm:py-3 rounded-lg font-semibold text-sm sm:text-base transition
+        ${
+           editLocked
+           ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+            : "bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white"
+         }
+         `}
       >
         Edit Resume
       </button>
@@ -122,8 +145,8 @@ function ViewResume({ data, onEdit }) {
 function ResumeRow({ label, value }) {
   return (
     <div>
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="font-medium text-gray-800 capitalize">
+      <p className="text-xs sm:text-sm text-gray-500">{label}</p>
+      <p className="font-medium text-gray-800 capitalize text-sm sm:text-base">
         {value || "-"}
       </p>
     </div>
@@ -194,23 +217,23 @@ function EditResume({ data, onSaved }) {
 
   return (
     <>
-      <h2 className="text-3xl font-bold text-gray-800 mb-6">
+      <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-4 sm:mb-6">
         ✏️ Edit Medical Resume
       </h2>
 
       <form
         onSubmit={handleSubmit}
-        className="grid grid-cols-1 md:grid-cols-2 gap-4"
+        className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4"
       >
         {/* Role - Select Field */}
         <div>
-          <label className="block text-sm text-gray-500 mb-1">
+          <label className="block text-xs sm:text-sm text-gray-500 mb-1">
             Role <span className="text-red-500">*</span>
           </label>
           <select
             value={form.role}
             onChange={(e) => setForm({ ...form, role: e.target.value })}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
             required
           >
             <option value="">Select role</option>
@@ -233,11 +256,11 @@ function EditResume({ data, onSaved }) {
         <Input label="Skills" value={form.skills} onChange={v => setForm({ ...form, skills: v })} required />
 
         <div className="md:col-span-2">
-          <label className="block text-sm text-gray-500 mb-1">
+          <label className="block text-xs sm:text-sm text-gray-500 mb-1">
             Bio <span className="text-red-500">*</span>
           </label>
           <textarea
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
             rows={4}
             value={form.bio}
             onChange={(e) => setForm({ ...form, bio: e.target.value })}
@@ -245,10 +268,10 @@ function EditResume({ data, onSaved }) {
           />
         </div>
 
-        <div className="md:col-span-2 mt-4">
+        <div className="md:col-span-2 mt-3 sm:mt-4">
           <button
             type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition"
+            className="w-full bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white py-2.5 sm:py-3 rounded-lg font-semibold text-sm sm:text-base transition"
           >
             Submit Profile
           </button>
@@ -263,7 +286,7 @@ function EditResume({ data, onSaved }) {
 function Input({ label, value, onChange, type = "text", disabled = false, required = false }) {
   return (
     <div>
-      <label className="block text-sm text-gray-500 mb-1">
+      <label className="block text-xs sm:text-sm text-gray-500 mb-1">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
       <input
@@ -272,7 +295,7 @@ function Input({ label, value, onChange, type = "text", disabled = false, requir
         disabled={disabled}
         required={required}
         onChange={(e) => onChange?.(e.target.value)}
-        className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+        className={`w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
           disabled ? "bg-gray-100 cursor-not-allowed" : ""
         }`}
       />
