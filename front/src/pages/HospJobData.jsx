@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import API_BASE_URL from "../config/api.js";
-import logo1 from "../assets/1.png";
+import { Avatar, Badge, Button, EmptyState, Field, Icon, Modal, Skeleton, SkeletonCard, TextArea, statusTone, useToast } from "../ui";
 
 export default function HospJobData() {
   const { jobId } = useParams();
@@ -26,6 +26,8 @@ export default function HospJobData() {
   const [showDateModal, setShowDateModal] = useState(false);
   const [selectedApplicationId, setSelectedApplicationId] = useState(null);
   const [processingAction, setProcessingAction] = useState(null);
+  const [confirmAction, setConfirmAction] = useState(null); // { kind: "reject", id } | { kind: "delete" }
+  const toast = useToast();
 
   /* ================= FETCH JOB ================= */
   useEffect(() => {
@@ -64,7 +66,7 @@ export default function HospJobData() {
     };
 
     fetchJobDetails();
-  }, [jobId, token, userRole, isAdmin]);
+  }, [jobId, token, userRole, isAdmin, navigate]);
 
   /* ================= FETCH APPLICANTS ================= */
   useEffect(() => {
@@ -117,7 +119,7 @@ export default function HospJobData() {
     };
 
     fetchApplicants();
-  }, [jobId, token, userRole, isAdmin]);
+  }, [jobId, token, userRole, isAdmin, navigate]);
 
   /* ================= UPDATE JOB ================= */
   const handleUpdate = async (e) => {
@@ -150,14 +152,14 @@ export default function HospJobData() {
       setJob(data.job);
       setEditing(false);
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   };
 
   /* ================= APPROVE APPLICATION ================= */
   const handleApprove = async (applicationId, interviewDate) => {
     if (!interviewDate) {
-      alert("Please select an interview date");
+      toast.warning("Please select an interview date");
       return;
     }
 
@@ -192,11 +194,11 @@ export default function HospJobData() {
         setApplicants(applicantsData.applicants || []);
       }
 
-      alert(`Application approved! Interview date: ${data.interview_date}`);
+      toast.success(`Application approved. Interview date: ${data.interview_date}`);
       setShowDateModal(false);
       setSelectedApplicationId(null);
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     } finally {
       setProcessingAction(null);
     }
@@ -204,9 +206,7 @@ export default function HospJobData() {
 
   /* ================= REJECT APPLICATION ================= */
   const handleReject = async (applicationId) => {
-    if (!window.confirm("Are you sure you want to reject this application?")) {
-      return;
-    }
+    setConfirmAction(null);
 
     setProcessingAction(applicationId);
     try {
@@ -238,9 +238,9 @@ export default function HospJobData() {
         setApplicants(applicantsData.applicants || []);
       }
 
-      alert("Application rejected");
+      toast.info("Application rejected");
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     } finally {
       setProcessingAction(null);
     }
@@ -248,9 +248,7 @@ export default function HospJobData() {
 
   /* ================= DELETE JOB ================= */
   const handleDelete = async () => {
-    if (!window.confirm(`Are you sure you want to delete "${job.title}"? This action cannot be undone.`)) {
-      return;
-    }
+    setConfirmAction(null);
 
     setDeleting(true);
     try {
@@ -266,10 +264,10 @@ export default function HospJobData() {
         throw new Error(data.message || "Failed to delete job");
       }
 
-      alert("Job deleted successfully");
+      toast.success("Job deleted");
       navigate("/posted-jobs");
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     } finally {
       setDeleting(false);
     }
@@ -278,390 +276,322 @@ export default function HospJobData() {
   /* ================= UI STATES ================= */
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-gray-500">
-        Loading job details…
-      </div>
+      <Shell>
+        <div className="mb-8 space-y-3" aria-busy="true" aria-label="Loading job">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-11 w-2/3" />
+        </div>
+        <SkeletonCard lines={5} />
+      </Shell>
     );
   }
 
-  if (error) {
+  if (error || !job) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-red-600">
-        {error}
-      </div>
+      <Shell>
+        <div className="ds-card">
+          <EmptyState
+            icon={error ? "error" : "search_off"}
+            title={error ? "Couldn't load this job" : "Job not found"}
+            description={error || "It may have been deleted."}
+            action={
+              <Button to="/posted-jobs" variant="secondary" icon="arrow_back">
+                Jobs posted
+              </Button>
+            }
+          />
+        </div>
+      </Shell>
     );
   }
 
-  if (!job) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-gray-500">
-        Job not found
-      </div>
-    );
-  }
+  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+  const salary = job.min_salary && job.max_salary ? `₹${job.min_salary.toLocaleString()} – ₹${job.max_salary.toLocaleString()}` : null;
+  const statusOf = (a) => a.verification_status || a.users?.verification_status || "pending";
+  const counts = applicants.reduce((acc, a) => ({ ...acc, [statusOf(a)]: (acc[statusOf(a)] || 0) + 1 }), {});
 
   return (
-    <div className="min-h-screen bg-gray-50 py-4 sm:py-6 md:py-10 px-3 sm:px-4">
-      {/* Logo Section */}
-      <div className="max-w-4xl mx-auto mb-4 sm:mb-6 text-center">
-        <img 
-          src={logo1} 
-          alt="DocSpace Logo" 
-          className="h-12 sm:h-20 md:h-28 w-auto object-contain mx-auto"
-        />
-      </div>
+    <Shell>
+      <button
+        type="button"
+        onClick={() => navigate(isAdmin ? -1 : "/posted-jobs")}
+        className="ds-label mb-6 inline-flex min-h-10 items-center gap-1.5 transition-colors duration-150 hover:!text-gray-900"
+      >
+        <Icon name="arrow_back" className="text-[16px]" /> {isAdmin ? "Back" : "Jobs posted"}
+      </button>
 
-      <div className="max-w-4xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-10">
-
-        {/* ================= HEADER ================= */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
-          <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 break-words">
-            {editing ? "Edit Job" : job.title}
-          </h2>
-
-          {!editing && canEdit && (
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
-              <button
-                onClick={() => setEditing(true)}
-                className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white px-4 sm:px-5 py-2 rounded-lg font-medium transition text-sm sm:text-base"
-              >
-                Edit Job
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 sm:px-5 py-2 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
-              >
-                {deleting ? "Deleting..." : "Delete Job"}
-              </button>
-            </div>
-          )}
+      {/* ================= HEADER ================= */}
+      <div className="mb-8 flex animate-fade-up flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <p className="ds-eyebrow mb-3">{editing ? "Editing" : isAdmin ? "Job · admin view" : "Job"}</p>
+          <h1 className="ds-display break-words text-[32px] sm:text-[44px]">{editing ? "Edit job" : job.title}</h1>
         </div>
-
-        {/* ================= VIEW MODE ================= */}
-        {!editing && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 text-sm">
-            <DetailItem label="Department" value={job.department} />
-            <DetailItem label="Job Type" value={job.job_type} />
-            <DetailItem label="Experience Required" value={job.experience_required} />
-            <DetailItem
-              label="Salary Range"
-              value={
-                job.min_salary && job.max_salary
-                  ? `₹${job.min_salary.toLocaleString()} – ₹${job.max_salary.toLocaleString()}`
-                  : "—"
-              }
-            />
-
-            <div className="md:col-span-2">
-              <p className="text-gray-500 mb-2 text-xs sm:text-sm">Job Description</p>
-              <p className="text-gray-800 whitespace-pre-line text-sm sm:text-base leading-relaxed">
-                {job.description || "—"}
-              </p>
-            </div>
+        {!editing && canEdit && (
+          <div className="flex flex-wrap gap-2">
+            <Button icon="edit" onClick={() => setEditing(true)}>
+              Edit job
+            </Button>
+            <Button variant="outline" icon="delete" loading={deleting} onClick={() => setConfirmAction({ kind: "delete" })} className="text-coral-700">
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
           </div>
         )}
+      </div>
 
-        {/* ================= EDIT MODE ================= */}
-        {editing && (
-          <form
-            onSubmit={handleUpdate}
-            className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6"
-          >
-            <Input label="Job Title" value={form.title} onChange={(v) => setForm({ ...form, title: v })} />
-            <Input label="Department" value={form.department} onChange={(v) => setForm({ ...form, department: v })} />
-            <Input label="Job Type" value={form.job_type} onChange={(v) => setForm({ ...form, job_type: v })} />
-            <Input label="Experience Required" value={form.experience_required} onChange={(v) => setForm({ ...form, experience_required: v })} />
-            <Input label="Minimum Salary" type="number" value={form.min_salary} onChange={(v) => setForm({ ...form, min_salary: v })} />
-            <Input label="Maximum Salary" type="number" value={form.max_salary} onChange={(v) => setForm({ ...form, max_salary: v })} />
+      {/* ================= VIEW MODE ================= */}
+      {!editing && (
+        <div className="space-y-6">
+          <dl className="ds-hairline grid-cols-2 overflow-hidden rounded-[var(--radius-card)] md:grid-cols-4">
+            <Detail label="Department" value={job.department} />
+            <Detail label="Job type" value={job.job_type} />
+            <Detail label="Experience" value={job.experience_required} />
+            <Detail label="Salary" value={salary} />
+          </dl>
+          <section className="ds-card p-6 sm:p-8">
+            <h2 className="ds-label mb-4 !text-gray-900">Job description</h2>
+            <p className="whitespace-pre-line text-[15px] leading-relaxed text-gray-700">{job.description || "—"}</p>
+          </section>
+        </div>
+      )}
 
-            <div className="md:col-span-2">
-              <label className="block text-xs sm:text-sm font-medium text-gray-600 mb-1">
-                Job Description
-              </label>
-              <textarea
-                rows={5}
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-[var(--color-primary)] focus:outline-none"
-              />
-            </div>
+      {/* ================= EDIT MODE ================= */}
+      {editing && (
+        <form onSubmit={handleUpdate} className="ds-card overflow-hidden">
+          <div className="grid grid-cols-1 gap-5 p-6 md:grid-cols-2">
+            <Field label="Job title" value={form.title ?? ""} onChange={set("title")} />
+            <Field label="Department" value={form.department ?? ""} onChange={set("department")} />
+            <Field label="Job type" value={form.job_type ?? ""} onChange={set("job_type")} />
+            <Field label="Experience required" value={form.experience_required ?? ""} onChange={set("experience_required")} />
+            <Field label="Minimum salary ₹" type="number" value={form.min_salary ?? ""} onChange={set("min_salary")} />
+            <Field label="Maximum salary ₹" type="number" value={form.max_salary ?? ""} onChange={set("max_salary")} />
+            <TextArea label="Job description" rows={6} value={form.description ?? ""} onChange={set("description")} className="md:col-span-2" />
+          </div>
+          <div className="flex flex-col-reverse gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditing(false);
+                setForm(job);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" icon="check">
+              Save changes
+            </Button>
+          </div>
+        </form>
+      )}
 
-            <div className="md:col-span-2 flex flex-col sm:flex-row justify-end gap-3 sm:gap-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setEditing(false);
-                  setForm(job);
-                }}
-                className="w-full sm:w-auto px-4 sm:px-6 py-2 rounded-lg border text-gray-600 text-sm sm:text-base font-medium hover:bg-gray-50 transition"
-              >
-                Cancel
-              </button>
+      {/* ================= APPLICANTS ================= */}
+      {(userRole === "hospital" || isAdmin) && canViewApplicants && (
+        <section className="mt-12">
+          <div className="ds-sec-head !mb-5">
+            <span className="ds-label">
+              <b>01</b> — Applicants{isAdmin && " · admin view"}
+            </span>
+            <span className="ds-rule" />
+            <span className="ds-label">
+              {applicants.length} total
+              {applicants.length > 0 && ` · ${counts.pending || 0} pending`}
+            </span>
+          </div>
 
-              <button
-                type="submit"
-                className="w-full sm:w-auto px-4 sm:px-6 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm sm:text-base font-semibold transition"
-              >
-                Save Changes
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* ================= APPLICANTS ================= */}
-        {(userRole === "hospital" || isAdmin) && canViewApplicants && (
-          <div className="mt-8 sm:mt-12">
-            <h3 className="text-xl sm:text-2xl font-semibold text-gray-800 mb-4">
-              Applicants {isAdmin && <span className="text-xs sm:text-sm font-normal text-gray-500">(Admin View)</span>}
-            </h3>
-
+          <div className="ds-card overflow-hidden">
             {loadingApplicants ? (
-              <p className="text-gray-500 text-sm sm:text-base">Loading applicants…</p>
-            ) : applicants.length === 0 ? (
-              <p className="text-gray-500 text-sm sm:text-base">No applications yet</p>
-            ) : (
-              <div className="space-y-3 sm:space-y-4">
-                {applicants.map((a) => {
-                  const status = a.verification_status || a.users?.verification_status || "pending";
-                  const statusColors = {
-                    approved: "bg-green-100 text-green-800 border-green-200",
-                    rejected: "bg-red-100 text-red-800 border-red-200",
-                    pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
-                  };
-                  const statusLabels = {
-                    approved: (
-                      <span className="flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">check_circle</span>
-                        Approved
-                      </span>
-                    ),
-                    rejected: (
-                      <span className="flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">cancel</span>
-                        Rejected
-                      </span>
-                    ),
-                    pending: (
-                      <span className="flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">schedule</span>
-                        Pending
-                      </span>
-                    ),
-                  };
-                  const isProcessing = processingAction === a.id;
-
-                  return (
-                    <div
-                      key={a.id}
-                      className="p-3 sm:p-4 border rounded-lg sm:rounded-xl hover:bg-gray-50 transition"
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-                        <div
-                          onClick={() => navigate(`/profile/${a.users.id}`)}
-                          className="flex-1 cursor-pointer min-w-0"
-                        >
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-1">
-                            <p className="font-semibold text-gray-800 text-sm sm:text-base truncate">
-                              {a.users?.name || "Unknown"}
-                            </p>
-                            <span
-                              className={`px-2 py-0.5 text-xs font-semibold rounded-full border w-fit ${statusColors[status] || statusColors.pending}`}
-                            >
-                              {statusLabels[status] || "Pending"}
-                            </span>
-                          </div>
-                          <p className="text-xs sm:text-sm text-gray-600 break-words">
-                            {a.users?.designation || "—"}
-                            {a.users?.specialization ? ` • ${a.users.specialization}` : ""}
-                          </p>
-                          {a.interview_date && status === "approved" && (
-                            <p className="text-xs text-green-600 mt-1 font-medium">
-                              Interview: {new Date(a.interview_date).toLocaleDateString()}
-                            </p>
-                          )}
-                          <p className="text-xs text-gray-400 mt-1">
-                            Applied on{" "}
-                            {a.applied_at
-                              ? new Date(a.applied_at).toLocaleDateString()
-                              : "—"}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 sm:ml-4">
-                          {/* View Resume button - always visible for all applicants */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/resume/${a.users.id}`);
-                            }}
-                            className="flex-1 sm:flex-none px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white text-xs sm:text-sm rounded-lg transition flex items-center justify-center gap-1.5"
-                          >
-                            <span className="material-symbols-outlined text-sm">description</span>
-                            <span className="hidden sm:inline">View Resume</span>
-                            <span className="sm:hidden">Resume</span>
-                          </button>
-                          {/* Approve button - only for non-approved applicants */}
-                          {status !== "approved" && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedApplicationId(a.id);
-                                setShowDateModal(true);
-                              }}
-                              disabled={isProcessing || status === "rejected"}
-                              className="flex-1 sm:flex-none px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-                            >
-                              <span className="material-symbols-outlined text-sm">check_circle</span>
-                              <span className="hidden sm:inline">Approve</span>
-                              <span className="sm:hidden">Approve</span>
-                            </button>
-                          )}
-                          {/* Reject button - only for non-rejected applicants */}
-                          {status !== "rejected" && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleReject(a.id);
-                              }}
-                              disabled={isProcessing || status === "approved"}
-                              className="flex-1 sm:flex-none px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs sm:text-sm rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-                            >
-                              <span className="material-symbols-outlined text-sm">cancel</span>
-                              <span className="hidden sm:inline">Reject</span>
-                              <span className="sm:hidden">Reject</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
+              <ul className="divide-y divide-gray-200" aria-busy="true">
+                {[0, 1, 2].map((i) => (
+                  <li key={i} className="flex items-center gap-4 p-5">
+                    <Skeleton className="h-10 w-10 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-1/3" />
+                      <Skeleton className="h-3 w-1/4" />
                     </div>
+                  </li>
+                ))}
+              </ul>
+            ) : applicants.length === 0 ? (
+              <EmptyState icon="group" title="No applications yet" description="Applications from verified doctors will appear here." />
+            ) : (
+              <ul className="divide-y divide-gray-200">
+                {applicants.map((a) => {
+                  const status = statusOf(a);
+                  const isProcessing = processingAction === a.id;
+                  return (
+                    <li key={a.id} className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center">
+                      <Link to={`/profile/${a.users.id}`} className="group flex min-w-0 flex-1 items-center gap-4">
+                        <Avatar name={a.users?.name || "?"} size={44} />
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="truncate font-semibold text-gray-900 transition-colors duration-150 group-hover:text-coral-700">{a.users?.name || "Unknown"}</span>
+                            <Badge tone={statusTone(status)}>{status}</Badge>
+                          </div>
+                          <p className="mt-0.5 truncate text-sm text-gray-600">
+                            {a.users?.designation || "—"}
+                            {a.users?.specialization ? ` · ${a.users.specialization}` : ""}
+                          </p>
+                          <p className="mt-1 flex flex-wrap gap-x-4 font-mono text-[11px] uppercase tracking-[0.08em] text-gray-500">
+                            <span>Applied {a.applied_at ? new Date(a.applied_at).toLocaleDateString() : "—"}</span>
+                            {a.interview_date && status === "approved" && (
+                              <span className="text-emerald-700">Interview {new Date(a.interview_date).toLocaleDateString()}</span>
+                            )}
+                          </p>
+                        </div>
+                      </Link>
+                      <div className="flex flex-wrap gap-2 lg:shrink-0">
+                        <Button variant="outline" size="sm" icon="description" onClick={() => navigate(`/resume/${a.users.id}`)}>
+                          Resume
+                        </Button>
+                        {status !== "approved" && (
+                          <Button
+                            variant="success"
+                            size="sm"
+                            icon="check_circle"
+                            loading={isProcessing}
+                            disabled={status === "rejected"}
+                            onClick={() => {
+                              setSelectedApplicationId(a.id);
+                              setShowDateModal(true);
+                            }}
+                          >
+                            Approve
+                          </Button>
+                        )}
+                        {status !== "rejected" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon="cancel"
+                            className="text-coral-700"
+                            disabled={isProcessing || status === "approved"}
+                            onClick={() => setConfirmAction({ kind: "reject", id: a.id })}
+                          >
+                            Reject
+                          </Button>
+                        )}
+                      </div>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             )}
           </div>
-        )}
-
-      </div>
+        </section>
+      )}
 
       {/* Date Input Modal for Approve */}
-      {showDateModal && (
-        <DateInputModal
-          isOpen={showDateModal}
-          onClose={() => {
-            setShowDateModal(false);
-            setSelectedApplicationId(null);
-          }}
-          onConfirm={(date) => {
-            if (selectedApplicationId) {
-              handleApprove(selectedApplicationId, date);
-            }
-          }}
-          applicantName={applicants.find(a => a.id === selectedApplicationId)?.users?.name || "Applicant"}
-        />
-      )}
-    </div>
+      <DateInputModal
+        isOpen={showDateModal}
+        onClose={() => {
+          setShowDateModal(false);
+          setSelectedApplicationId(null);
+        }}
+        onConfirm={(date) => {
+          if (selectedApplicationId) {
+            return handleApprove(selectedApplicationId, date);
+          }
+        }}
+        applicantName={applicants.find((a) => a.id === selectedApplicationId)?.users?.name || "Applicant"}
+      />
+
+      {/* Reject / delete confirmation */}
+      <Modal
+        open={!!confirmAction}
+        onClose={() => setConfirmAction(null)}
+        title={confirmAction?.kind === "delete" ? "Delete this job?" : "Reject this application?"}
+        icon={confirmAction?.kind === "delete" ? "delete" : "cancel"}
+        size="sm"
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setConfirmAction(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => (confirmAction?.kind === "delete" ? handleDelete() : handleReject(confirmAction.id))}
+            >
+              {confirmAction?.kind === "delete" ? "Delete job" : "Reject"}
+            </Button>
+          </div>
+        }
+      >
+        <p className="px-6 py-5 text-sm text-gray-700">
+          {confirmAction?.kind === "delete"
+            ? `“${job.title}” and its applications will be removed. This can’t be undone.`
+            : "The applicant will be notified that their application was rejected."}
+        </p>
+      </Modal>
+    </Shell>
   );
 }
 
 /* ================= DATE INPUT MODAL ================= */
 function DateInputModal({ isOpen, onClose, onConfirm, applicantName }) {
-  const [date, setDate] = useState("");
+  const today = new Date().toISOString().split("T")[0];
+  const [date, setDate] = useState(today);
   const [loading, setLoading] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
-    if (isOpen) {
-      const today = new Date().toISOString().split("T")[0];
-      setDate(today);
-    }
+    if (isOpen) setDate(new Date().toISOString().split("T")[0]);
   }, [isOpen]);
 
   const handleConfirm = async () => {
     if (!date) {
-      alert("Please select an interview date");
+      toast.warning("Please select an interview date");
       return;
     }
 
     setLoading(true);
     try {
       await onConfirm(date);
-      setDate("");
     } catch (err) {
-      alert(err.message || "Failed to approve application");
+      toast.error(err.message || "Failed to approve application");
     } finally {
       setLoading(false);
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl p-5 sm:p-6 md:p-8 max-w-md w-full">
-        <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-3 sm:mb-4">
-          Approve Application
-        </h2>
-        <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">
-          Select the interview date for <span className="font-semibold">{applicantName}</span>
-        </p>
-
-        <div className="mb-4 sm:mb-6">
-          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
-            Interview Date
-          </label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            min={new Date().toISOString().split("T")[0]}
-            className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border-2 border-gray-300 rounded-lg focus:border-[var(--color-primary)] focus:outline-none transition"
-            required
-          />
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-          <button
-            onClick={onClose}
-            disabled={loading}
-            className="flex-1 px-4 py-2.5 sm:py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-medium disabled:opacity-50 text-sm sm:text-base"
-          >
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title="Approve application"
+      subtitle={`Pick an interview date for ${applicantName}`}
+      icon="event"
+      size="sm"
+      footer={
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button variant="outline" onClick={onClose} disabled={loading}>
             Cancel
-          </button>
-          <button
-            onClick={handleConfirm}
-            disabled={loading || !date}
-            className="flex-1 px-4 py-2.5 sm:py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
-          >
-            {loading ? "Approving..." : "Approve"}
-          </button>
+          </Button>
+          <Button variant="success" icon="check" onClick={handleConfirm} loading={loading} disabled={!date}>
+            {loading ? "Approving…" : "Approve"}
+          </Button>
         </div>
+      }
+    >
+      <div className="px-6 py-5">
+        <Field label="Interview date" type="date" value={date} onChange={(e) => setDate(e.target.value)} min={today} required />
       </div>
-    </div>
+    </Modal>
   );
 }
 
 /* ================= HELPERS ================= */
-
-function DetailItem({ label, value }) {
+function Shell({ children }) {
   return (
-    <div className="p-3 sm:p-4 bg-gray-50 rounded-lg sm:rounded-xl">
-      <p className="text-xs sm:text-sm text-gray-500 mb-1 sm:mb-2">{label}</p>
-      <p className="text-sm sm:text-base font-medium text-gray-800 break-words">{value || "—"}</p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="ds-container max-w-5xl py-10 sm:py-14">{children}</div>
     </div>
   );
 }
 
-function Input({ label, value, onChange, type = "text" }) {
+function Detail({ label, value }) {
   return (
-    <div>
-      <label className="block text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2">
-        {label}
-      </label>
-      <input
-        type={type}
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-[var(--color-primary)] focus:outline-none transition"
-      />
+    <div className="min-w-0 p-5">
+      <dt className="ds-label">{label}</dt>
+      <dd className="mt-1.5 break-words font-medium capitalize text-gray-900">{value || "—"}</dd>
     </div>
   );
 }

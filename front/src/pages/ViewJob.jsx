@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import API_BASE_URL from "../config/api.js";
+import { Badge, Button, EmptyState, Icon, Skeleton, useToast } from "../ui";
 
 export default function ViewJob() {
   const navigate = useNavigate();
@@ -10,9 +11,9 @@ export default function ViewJob() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [applying, setApplying] = useState(false);
-  const [profileCompleted, setProfileCompleted] = useState(false);
   const [checkingProfile, setCheckingProfile] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
+  const toast = useToast();
 
   // Check if user is verified
   useEffect(() => {
@@ -46,7 +47,7 @@ export default function ViewJob() {
     };
 
     checkProfile();
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -76,7 +77,7 @@ export default function ViewJob() {
     };
 
     fetchJob();
-  }, [jobId]);
+  }, [jobId, navigate]);
 
   /* =========================
      APPLY HANDLER
@@ -85,13 +86,13 @@ export default function ViewJob() {
     const token = localStorage.getItem("token");
 
     if (!token) {
-      alert("Please login to apply for this job");
+      toast.info("Please log in to apply for this job");
       return;
     }
 
     // Check if profile is completed
     if (!isVerified) {
-      alert("⚠️ You need to be verified before applying for a job");
+      toast.warning("You need to be verified before applying for a job");
       return;
     }
 
@@ -111,13 +112,13 @@ export default function ViewJob() {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.error || "Failed to apply");
+        toast.error(data.error || "Failed to apply");
         return;
       }
 
-      alert("✅ Applied successfully!");
+      toast.success("Applied successfully");
     } catch {
-      alert("Something went wrong. Please try again.");
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setApplying(false);
     }
@@ -128,191 +129,143 @@ export default function ViewJob() {
      ========================= */
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-gray-50">
-        <div className="text-center">
-          <div className="inline-block animate-spin text-4xl mb-4">⏳</div>
-          <p className="text-gray-500">Loading job details…</p>
+      <Shell>
+        <div className="space-y-4" aria-busy="true" aria-label="Loading job">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-11 w-2/3" />
+          <Skeleton className="h-4 w-40" />
+          <div className="ds-card mt-8 grid gap-px sm:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="space-y-2 p-5">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-4 w-32" />
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      </Shell>
     );
   }
 
-  if (error) {
+  if (error || !job) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-gray-50">
-        <div className="text-center">
-          <div className="text-6xl mb-4">❌</div>
-          <p className="text-red-600 font-semibold">{error}</p>
+      <Shell>
+        <div className="ds-card">
+          <EmptyState
+            icon={error ? "error" : "search_off"}
+            title={error ? "Couldn't load this job" : "Job not found"}
+            description={error || "It may have been removed by the hospital."}
+            action={
+              <Button to="/search/jobs" variant="secondary" icon="arrow_back">
+                All jobs
+              </Button>
+            }
+          />
         </div>
-      </div>
+      </Shell>
     );
   }
 
-  if (!job) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-gray-50">
-        <div className="text-center">
-          <div className="text-6xl mb-4">🔍</div>
-          <p className="text-gray-500 font-semibold">Job not found</p>
-        </div>
-      </div>
-    );
-  }
+  const location = job.hospital?.city ? `${job.hospital.city}${job.hospital.state ? `, ${job.hospital.state}` : ""}` : null;
+  const salary = job.min_salary && job.max_salary ? `₹${job.min_salary.toLocaleString()} – ₹${job.max_salary.toLocaleString()}` : null;
 
   /* =========================
      RENDER
      ========================= */
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 py-4 sm:py-6 md:py-8 lg:py-12 px-3 sm:px-4 md:px-6">
-      <div className="max-w-5xl mx-auto">
+    <Shell>
+      <button
+        type="button"
+        onClick={() => window.history.back()}
+        className="ds-label mb-6 inline-flex min-h-10 items-center gap-1.5 transition-colors duration-150 hover:!text-gray-900"
+      >
+        <Icon name="arrow_back" className="text-[16px]" /> Back
+      </button>
 
-        {/* MAIN CARD */}
-        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-100 overflow-hidden mb-6 sm:mb-8">
-          {/* HEADER SECTION */}
-          <div className="bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-dark)] px-4 sm:px-6 md:px-10 py-6 sm:py-8">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-white mb-2 sm:mb-3 break-words">
-                  {job.title}
-                </h1>
-                <p className="text-red-100 text-xs sm:text-sm">
-                  Posted on {new Date(job.created_at).toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric"
-                  })}
-                </p>
-              </div>
-              <div className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-2xl sm:rounded-3xl bg-white/20 flex items-center justify-center text-2xl sm:text-3xl md:text-4xl shadow-lg flex-shrink-0">
-                💼
-              </div>
-            </div>
-          </div>
+      <div className="mb-8 flex animate-fade-up flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <p className="ds-eyebrow mb-3">{job.hospital?.name || "Job opening"}</p>
+          <h1 className="ds-display text-[32px] sm:text-[48px]">{job.title}</h1>
+          <p className="ds-label mt-3">
+            Posted {new Date(job.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+          </p>
+        </div>
+      </div>
 
-          <div className="p-4 sm:p-6 md:p-10">
-            {/* DETAILS GRID */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8 md:mb-10">
-              <DetailItem icon="🏥" label="Department" value={job.department} />
-              <DetailItem icon="💼" label="Job Type" value={job.job_type} />
-              <DetailItem icon="⭐" label="Experience Required" value={job.experience_required} />
-              <DetailItem
-                icon="💰"
-                label="Salary Range"
-                value={
-                  job.min_salary && job.max_salary
-                    ? `₹${job.min_salary.toLocaleString()} – ₹${job.max_salary.toLocaleString()}`
-                    : "—"
-                }
-              />
-              {job.hospital && (
-                <>
-                  <DetailItem icon="🏥" label="Hospital" value={job.hospital.name} />
-                  <DetailItem 
-                    icon="📍"
-                    label="Location" 
-                    value={
-                      job.hospital.city 
-                        ? `${job.hospital.city}${job.hospital.state ? `, ${job.hospital.state}` : ""}`
-                        : "—"
-                    } 
-                  />
-                </>
-              )}
-            </div>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0 space-y-6">
+          <dl className="ds-hairline grid-cols-2 sm:grid-cols-3 overflow-hidden rounded-[var(--radius-card)]">
+            <Detail label="Department" value={job.department} />
+            <Detail label="Job type" value={job.job_type} capitalize />
+            <Detail label="Experience" value={job.experience_required} />
+            <Detail label="Salary" value={salary} />
+            <Detail label="Hospital" value={job.hospital?.name} />
+            <Detail label="Location" value={location} />
+          </dl>
 
-            {/* DESCRIPTION */}
-            <div className="mb-4 sm:mb-6 pb-6 sm:pb-8 md:pb-10 border-b border-gray-200">
-              <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4 md:mb-5">
-                <span className="text-xl sm:text-2xl">📝</span>
-                <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">Job Description</h3>
-              </div>
-              <div className="prose max-w-none">
-                <p className="text-gray-700 whitespace-pre-line leading-relaxed text-sm sm:text-base md:text-lg">
-                  {job.description || "—"}
-                </p>
-              </div>
-            </div>
-          </div>
+          <section className="ds-card p-6 sm:p-8">
+            <h2 className="ds-label mb-4 !text-gray-900">Job description</h2>
+            <p className="whitespace-pre-line text-[15px] leading-relaxed text-gray-700">{job.description || "—"}</p>
+          </section>
         </div>
 
-        {/* APPLY SECTION */}
-        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-100 p-4 sm:p-6 md:p-10">
+        {/* APPLY */}
+        <aside className="ds-card p-6 lg:sticky lg:top-24">
+          <p className="ds-label">Apply</p>
+          <p className="mt-2 font-display text-xl font-medium text-gray-900">{job.title}</p>
+          {salary && <p className="mt-1 text-sm text-gray-600">{salary}</p>}
+
           {!checkingProfile && !isVerified && (
-            <div className="mb-4 sm:mb-6 md:mb-8 bg-gradient-to-r from-yellow-50 to-amber-50 border-l-4 border-yellow-400 rounded-xl sm:rounded-2xl p-4 sm:p-6">
-              <div className="flex items-start gap-3 sm:gap-4">
-                <span className="text-2xl sm:text-3xl flex-shrink-0">⚠️</span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-yellow-900 mb-2 text-base sm:text-lg">Not Verified</p>
-                  <p className="text-xs sm:text-sm text-yellow-800 mb-3 sm:mb-4">
-                    You need to be verified before applying for a job
-                  </p>
-                  <a 
-                    href="/get-verified" 
-                    className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition duration-300"
-                  >
-                    Get Verified →
-                  </a>
-                </div>
-              </div>
+            <div className="mt-5 border-l-2 border-amber-400 bg-amber-50 px-4 py-3">
+              <p className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                <Icon name="warning" className="text-[18px]" /> Not verified
+              </p>
+              <p className="mt-1 text-sm text-amber-900/80">You need to be verified before applying for a job.</p>
+              <Link to="/get-verified" className="mt-2 inline-flex min-h-10 items-center gap-1 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-coral-700 hover:text-coral-800">
+                Get verified <Icon name="arrow_forward" className="text-[16px]" />
+              </Link>
             </div>
           )}
-          
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 sm:gap-4 md:gap-5">
-            <button
-              onClick={() => window.history.back()}
-              className="w-full sm:w-auto px-6 sm:px-8 py-2.5 sm:py-3 md:py-3.5 rounded-xl sm:rounded-2xl font-semibold text-sm sm:text-base text-gray-700 border-2 border-gray-300 hover:bg-gray-50 transition-all duration-300 hover:scale-105"
-            >
-              ← Back
-            </button>
-            <button
-              onClick={handleApply}
-              disabled={applying || !isVerified || checkingProfile}
-              className={`w-full sm:w-auto px-6 sm:px-8 md:px-10 py-2.5 sm:py-3 md:py-3.5 rounded-xl sm:rounded-2xl font-semibold text-sm sm:text-base transition-all duration-300 text-white flex items-center justify-center gap-2
-                ${applying || !isVerified || checkingProfile
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-dark)] hover:shadow-2xl hover:scale-105"}
-              `}
-            >
-              {checkingProfile ? (
-                <>
-                  <span className="animate-spin">⏳</span>
-                  Checking...
-                </>
-              ) : applying ? (
-                <>
-                  <span className="animate-spin">⏳</span>
-                  Applying…
-                </>
-              ) : !isVerified ? (
-                "Get Verified to Apply"
-              ) : (
-                <>
-                  <span>✨</span>
-                  Apply Now
-                </>
-              )}
-            </button>
-          </div>
-        </div>
+          {!checkingProfile && isVerified && (
+            <p className="mt-4">
+              <Badge tone="success" icon="verified">
+                Verified profile
+              </Badge>
+            </p>
+          )}
 
+          <Button
+            className="mt-6 w-full"
+            size="lg"
+            onClick={handleApply}
+            loading={applying || checkingProfile}
+            disabled={!isVerified}
+            iconRight={isVerified ? "arrow_forward" : undefined}
+          >
+            {checkingProfile ? "Checking…" : applying ? "Applying…" : !isVerified ? "Get verified to apply" : "Apply now"}
+          </Button>
+        </aside>
       </div>
-    </div>
+    </Shell>
   );
 }
 
 /* =========================
-   HELPER COMPONENT
+   HELPER COMPONENTS
    ========================= */
-function DetailItem({ icon, label, value }) {
+function Shell({ children }) {
   return (
-    <div className="flex items-start gap-3 sm:gap-4 p-4 sm:p-5 bg-gray-50 rounded-xl sm:rounded-2xl hover:bg-gray-100 transition-all duration-300">
-      {icon && <span className="text-2xl sm:text-3xl flex-shrink-0">{icon}</span>}
-      <div className="flex-1 min-w-0">
-        <p className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wide mb-1 sm:mb-2">{label}</p>
-        <p className="text-sm sm:text-base md:text-lg font-bold text-gray-900 break-words">
-          {value || "—"}
-        </p>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="ds-container max-w-6xl py-10 sm:py-14">{children}</div>
+    </div>
+  );
+}
+
+function Detail({ label, value, capitalize }) {
+  return (
+    <div className="min-w-0 p-5">
+      <dt className="ds-label">{label}</dt>
+      <dd className={`mt-1.5 break-words font-medium text-gray-900 ${capitalize ? "capitalize" : ""}`}>{value || "—"}</dd>
     </div>
   );
 }

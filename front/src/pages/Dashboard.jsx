@@ -1,9 +1,30 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import API_BASE_URL from "../config/api";
 import PieChart from "../components/PieChart";
-import BarChart from "../components/BarChart";
 import Histogram from "../components/Histogram";
+import {
+  Avatar,
+  Badge,
+  Button,
+  EmptyState,
+  Icon,
+  PageHeader,
+  Reveal,
+  SectionHead,
+  Skeleton,
+  SkeletonCard,
+  StatCard,
+  Tabs,
+  statusTone,
+} from "../ui";
+
+/* Categorical order validated with the dataviz palette checker (light surface). */
+const chartColors = ["#E05252", "#2a78d6", "#1baf7a", "#eda100", "#8b5cf6", "#e87ba4"];
+/* Status colors: approved / rejected / pending (always shown with labels). */
+const statusColors = ["#12B886", "#E05252", "#F59F00"];
+
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 /* =========================
    DASHBOARD
@@ -14,12 +35,13 @@ export default function Dashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [filter, setFilter] = useState("all");
 
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     // Trigger a custom event to notify App.jsx to update state
-    window.dispatchEvent(new Event('logout'));
+    window.dispatchEvent(new Event("logout"));
     navigate("/auth");
   };
 
@@ -33,10 +55,10 @@ export default function Dashboard() {
     })
       .then(async (res) => {
         if (res.status === 401) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        navigate("/auth");
-        throw new Error("Unauthorized");
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          navigate("/auth");
+          throw new Error("Unauthorized");
         }
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "Failed to load dashboard");
@@ -48,40 +70,48 @@ export default function Dashboard() {
         setError(err.message);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [navigate]);
 
   /* =========================
      STATES
      ========================= */
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-gray-500">
-        Loading dashboard…
-      </div>
-    );
-  }
+  if (loading) return <DashboardSkeleton />;
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-red-600">
-        {error}
-      </div>
+      <Shell>
+        <div className="ds-card">
+          <EmptyState
+            icon="error"
+            title="Couldn't load your dashboard"
+            description={error}
+            action={
+              <Button variant="secondary" icon="refresh" onClick={() => window.location.reload()}>
+                Try again
+              </Button>
+            }
+          />
+        </div>
+      </Shell>
     );
   }
 
   if (!data || !data.profile) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-gray-500">
-        Profile not available
-      </div>
+      <Shell>
+        <div className="ds-card">
+          <EmptyState icon="person_off" title="Profile not available" description="We couldn't find a profile for this account." />
+        </div>
+      </Shell>
     );
   }
 
   const { profile, role, hospital, postedJobs = [], appliedJobs = [], totalApplications = 0, applicationStatuses = [], applicationDates = [] } = data;
+  const isHospital = role === "hospital";
 
   // Calculate statistics
-  const stats = role === "hospital" 
+  const stats = isHospital
     ? {
         totalJobsPosted: postedJobs.length,
         totalApplications: totalApplications, // From backend
@@ -89,379 +119,283 @@ export default function Dashboard() {
       }
     : {
         totalApplied: appliedJobs.length,
-        totalResponses: appliedJobs.filter(app => app.verification_status === "approved" || app.verification_status === "rejected").length,
-        pendingApplications: appliedJobs.filter(app => !app.verification_status || app.verification_status === "pending").length,
+        totalResponses: appliedJobs.filter((app) => app.verification_status === "approved" || app.verification_status === "rejected").length,
+        pendingApplications: appliedJobs.filter((app) => !app.verification_status || app.verification_status === "pending").length,
       };
 
-  // Prepare chart data
-  const chartColors = [
-    "#FF6B6B", // Primary red
-    "#4ECDC4", // Teal
-    "#45B7D1", // Blue
-    "#FFA07A", // Light salmon
-    "#98D8C8", // Mint
-    "#F7DC6F", // Yellow
-  ];
+  const countBy = (items, key) => {
+    const counts = {};
+    items.forEach((item) => {
+      const k = key(item);
+      counts[k] = (counts[k] || 0) + 1;
+    });
+    return Object.entries(counts).map(([label, value]) => ({ label, value }));
+  };
 
-  // Job Type Distribution (Pie Chart)
-  const jobTypeData = role === "hospital"
-    ? (() => {
-        const typeCount = {};
-        postedJobs.forEach((job) => {
-          const type = job.job_type || "other";
-          typeCount[type] = (typeCount[type] || 0) + 1;
-        });
-        return Object.entries(typeCount).map(([label, value]) => ({
-          label: label.charAt(0).toUpperCase() + label.slice(1).replace("-", " "),
-          value,
-        }));
-      })()
-    : (() => {
-        const typeCount = {};
-        appliedJobs.forEach((app) => {
-          const type = app.jobs?.job_type || "other";
-          typeCount[type] = (typeCount[type] || 0) + 1;
-        });
-        return Object.entries(typeCount).map(([label, value]) => ({
-          label: label.charAt(0).toUpperCase() + label.slice(1).replace("-", " "),
-          value,
-        }));
-      })();
+  // Job Type Distribution
+  const jobTypeData = countBy(isHospital ? postedJobs : appliedJobs, (x) => (isHospital ? x.job_type : x.jobs?.job_type) || "other").map((d) => ({
+    ...d,
+    label: cap(d.label).replace("-", " "),
+  }));
 
-  // Department Distribution (Pie Chart)
-  const departmentData = role === "hospital"
-    ? (() => {
-        const deptCount = {};
-        postedJobs.forEach((job) => {
-          const dept = job.department || "Other";
-          deptCount[dept] = (deptCount[dept] || 0) + 1;
-        });
-        return Object.entries(deptCount).map(([label, value]) => ({
-          label,
-          value,
-        }));
-      })()
-    : (() => {
-        const deptCount = {};
-        appliedJobs.forEach((app) => {
-          const dept = app.jobs?.department || "Other";
-          deptCount[dept] = (deptCount[dept] || 0) + 1;
-        });
-        return Object.entries(deptCount).map(([label, value]) => ({
-          label,
-          value,
-        }));
-      })();
+  // Department Distribution
+  const departmentData = countBy(isHospital ? postedJobs : appliedJobs, (x) => (isHospital ? x.department : x.jobs?.department) || "Other");
 
-  // Application Status Distribution (Pie Chart) - For both users and hospitals
+  // Application Status Distribution - for both users and hospitals
   const applicationStatusData = (() => {
-    const statusCount = {
-      approved: 0,
-      rejected: 0,
-      pending: 0,
-    };
-
-    if (role === "hospital") {
-      // For hospitals, use applicationStatuses from backend
-      applicationStatuses.forEach((status) => {
-        if (status === "approved") {
-          statusCount.approved += 1;
-        } else if (status === "rejected") {
-          statusCount.rejected += 1;
-        } else {
-          statusCount.pending += 1;
-        }
-      });
-    } else {
-      // For users, use appliedJobs
-      appliedJobs.forEach((app) => {
-        const status = app.verification_status || "pending";
-        if (status === "approved") {
-          statusCount.approved += 1;
-        } else if (status === "rejected") {
-          statusCount.rejected += 1;
-        } else {
-          statusCount.pending += 1;
-        }
-      });
-    }
-
-    // Filter out zero values
-    const allValues = [
-      { label: "Approved", value: statusCount.approved },
-      { label: "Rejected", value: statusCount.rejected },
-      { label: "Pending", value: statusCount.pending },
-    ];
-    
-    const nonZeroValues = allValues.filter(item => item.value > 0);
-    
-    return nonZeroValues.length > 0 ? nonZeroValues : [];
+    const statusCount = { approved: 0, rejected: 0, pending: 0 };
+    const statuses = isHospital ? applicationStatuses : appliedJobs.map((app) => app.verification_status || "pending");
+    statuses.forEach((status) => {
+      if (status === "approved") statusCount.approved += 1;
+      else if (status === "rejected") statusCount.rejected += 1;
+      else statusCount.pending += 1;
+    });
+    return [
+      { label: "Approved", value: statusCount.approved, color: statusColors[0] },
+      { label: "Rejected", value: statusCount.rejected, color: statusColors[1] },
+      { label: "Pending", value: statusCount.pending, color: statusColors[2] },
+    ].filter((item) => item.value > 0);
   })();
 
-  // Monthly Activity (Histogram) - Yearly data showing all 12 months of each year
+  // Monthly Activity - all 12 months of each year with activity
   const monthlyData = (() => {
     const counts = {};
-    const dates = role === "hospital" ? applicationDates : appliedJobs.map(app => app.created_at || app.applied_at);
+    const dates = isHospital ? applicationDates : appliedJobs.map((app) => app.created_at || app.applied_at);
 
     dates.filter(Boolean).forEach((dateStr) => {
       const date = new Date(dateStr);
       const year = date.getFullYear();
-      const month = date.getMonth(); // 0-11
-      const monthName = date.toLocaleDateString("en-US", { month: "long" });
-
-      if (!counts[year]) {
-        counts[year] = Array(12).fill(0); // Initialize all 12 months for the year
-      }
-      counts[year][month] += 1;
+      if (!counts[year]) counts[year] = Array(12).fill(0);
+      counts[year][date.getMonth()] += 1;
     });
 
     const chartData = [];
-    const sortedYears = Object.keys(counts).sort();
-
-    sortedYears.forEach(year => {
-      for (let month = 0; month < 12; month++) {
-        const monthName = new Date(year, month).toLocaleDateString("en-US", { month: "long" });
-        chartData.push({
-          label: monthName,
-          value: counts[year][month] || 0,
-          sortKey: `${year}-${String(month + 1).padStart(2, "0")}`
-        });
-      }
-    });
+    Object.keys(counts)
+      .sort()
+      .forEach((year) => {
+        for (let month = 0; month < 12; month++) {
+          chartData.push({
+            label: new Date(year, month).toLocaleDateString("en-US", { month: "long" }),
+            value: counts[year][month] || 0,
+            sortKey: `${year}-${String(month + 1).padStart(2, "0")}`,
+          });
+        }
+      });
     return chartData;
   })();
+
+  const hasActivity = postedJobs.length > 0 || appliedJobs.length > 0;
+  const name = isHospital ? hospital?.hospital_name || profile.name : profile.name;
+  const verification = isHospital ? hospital?.verification_status : profile.verification_status;
+
+  const statusOf = (app) => app.verification_status || "pending";
+  const filteredApplied = filter === "all" ? appliedJobs : appliedJobs.filter((a) => statusOf(a) === filter);
+  const filterTabs = ["all", "pending", "approved", "rejected"].map((v) => ({
+    value: v,
+    label: cap(v),
+    count: v === "all" ? appliedJobs.length : appliedJobs.filter((a) => statusOf(a) === v).length,
+  }));
 
   /* =========================
      UI
      ========================= */
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6 sm:py-8 md:py-10 px-4 sm:px-6">
-      <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8">
-
-        {/* PROFILE CARD */}
-        <div className="bg-white rounded-xl sm:rounded-2xl shadow p-4 sm:p-6">
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-3 sm:mb-4 flex items-center gap-2">
-            {role === "hospital" ? (
-              <>
-                <span className="material-symbols-outlined text-2xl text-gray-700">local_hospital</span>
-                Hospital Profile
-              </>
-            ) : (
-              <>
-                <span className="material-symbols-outlined text-2xl text-gray-700">person</span>
-                Your Profile
-              </>
-            )}
-          </h2>
-
-          {role === "hospital" && hospital ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm">
-              <ProfileRow label="Hospital Name" value={hospital.hospital_name} />
-              <ProfileRow label="Hospital Type" value={hospital.hospital_type} />
-              <ProfileRow label="Registration Number" value={hospital.registration_number_hospital} />
-              <ProfileRow label="City" value={hospital.hospital_city} />
-              <ProfileRow label="State" value={hospital.hospital_state} />
-              <ProfileRow label="Contact Person" value={hospital.hospital_person_name} />
-              <ProfileRow label="Contact Email" value={hospital.hospital_person_email} />
-              <ProfileRow label="Website" value={hospital.hospital_website} />
-              <ProfileRow label="Verification Status" value={hospital.verification_status ? hospital.verification_status.charAt(0).toUpperCase() + hospital.verification_status.slice(1) : "-"} />
-            </div>
+    <Shell>
+      <PageHeader
+        eyebrow={isHospital ? "Hospital dashboard" : "Doctor dashboard"}
+        title={`Hello, ${isHospital ? name || "there" : String(name || "there").split(" ")[0]}`}
+        description={isHospital ? "Your openings, applicants and hiring activity at a glance." : "Your applications, responses and profile at a glance."}
+        actions={
+          isHospital ? (
+            <>
+              <Button to="/post-job" icon="add">
+                Post a job
+              </Button>
+              <Button to="/hospital-profile" variant="secondary">
+                Edit profile
+              </Button>
+            </>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm">
-              <ProfileRow label="Name" value={profile.name} />
-              <ProfileRow label="Role" value={profile.role} />
-              <ProfileRow label="Email" value={profile.email} />
-              <ProfileRow label="Phone" value={profile.phone} />
-              <ProfileRow label="Designation" value={profile.designation} />
-              <ProfileRow label="Specialization" value={profile.specialization} />
-              <ProfileRow label="Hospital" value={profile.hospital_affiliation} />
-              <ProfileRow label="Experience" value={profile.years_of_experience ? `${profile.years_of_experience} years` : "-"} />
-            </div>
-          )}
+            <>
+              <Button to="/search/jobs" icon="search">
+                Find jobs
+              </Button>
+              <Button to="/resume" variant="secondary">
+                Edit resume
+              </Button>
+            </>
+          )
+        }
+      />
 
-          {role !== "hospital" && (
-            <div className="mt-3 sm:mt-4">
-              <p className="text-gray-500 text-xs sm:text-sm mb-1">Bio</p>
-              <p className="bg-gray-50 p-3 sm:p-4 rounded-lg text-xs sm:text-sm">
-                {profile.bio || "-"}
-              </p>
-            </div>
-          )}
-        </div>
+      {/* 01 · overview */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        {isHospital ? (
+          <>
+            <StatCard icon="work" label="Jobs posted" value={stats.totalJobsPosted} />
+            <StatCard icon="description" label="Total applications" value={stats.totalApplications} tone="info" delay={0.05} />
+            <StatCard icon="check_circle" label="Active jobs" value={stats.activeJobs} tone="success" delay={0.1} />
+          </>
+        ) : (
+          <>
+            <StatCard icon="send" label="Jobs applied" value={stats.totalApplied} />
+            <StatCard icon="mark_email_read" label="Responses received" value={stats.totalResponses} tone="success" delay={0.05} />
+            <StatCard icon="schedule" label="Pending applications" value={stats.pendingApplications} tone="warning" delay={0.1} />
+          </>
+        )}
+      </div>
 
-        {/* STATISTICS SECTION */}
-        <div className="bg-white rounded-xl sm:rounded-2xl shadow p-4 sm:p-6">
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6 flex items-center gap-2">
-            <span className="material-symbols-outlined text-xl sm:text-2xl text-gray-700">bar_chart</span>
-            Statistics
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
-            {role === "hospital" ? (
-              <>
-                <StatCard
-                  icon={<span className="material-symbols-outlined text-3xl">work</span>}
-                  label="Jobs Posted"
-                  value={stats.totalJobsPosted}
-                  color="bg-[var(--color-accent)] text-[var(--color-primary-dark)]"
+      <div className="mt-12 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
+        {/* 02 · profile */}
+        <section>
+          <SectionHead n="01" title={isHospital ? "Hospital" : "Profile"} meta={isHospital ? "Registered details" : "Public details"} className="!mb-5" />
+          <Reveal className="ds-card overflow-hidden">
+            <div className="flex items-center gap-4 border-b border-gray-200 p-5">
+              <Avatar name={name} size={48} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-display text-lg font-medium text-gray-900">{name || "—"}</p>
+                <p className="ds-label truncate">{isHospital ? hospital?.hospital_type || "Hospital" : profile.designation || profile.role}</p>
+              </div>
+              {verification && <Badge tone={statusTone(verification)}>{verification}</Badge>}
+            </div>
+
+            <dl className="grid grid-cols-1 gap-px bg-[var(--color-line-soft)] sm:grid-cols-2">
+              {isHospital && hospital ? (
+                <>
+                  <ProfileRow label="Registration no." value={hospital.registration_number_hospital} mono />
+                  <ProfileRow label="Location" value={[hospital.hospital_city, hospital.hospital_state].filter(Boolean).join(", ")} />
+                  <ProfileRow label="Contact person" value={hospital.hospital_person_name} />
+                  <ProfileRow label="Contact email" value={hospital.hospital_person_email} />
+                  <ProfileRow label="Website" value={hospital.hospital_website} wide />
+                </>
+              ) : (
+                <>
+                  <ProfileRow label="Email" value={profile.email} />
+                  <ProfileRow label="Phone" value={profile.phone} />
+                  <ProfileRow label="Specialization" value={profile.specialization} />
+                  <ProfileRow label="Experience" value={profile.years_of_experience ? `${profile.years_of_experience} years` : null} />
+                  <ProfileRow label="Hospital" value={profile.hospital_affiliation} wide />
+                </>
+              )}
+            </dl>
+
+            {!isHospital && (
+              <div className="border-t border-gray-200 p-5">
+                <p className="ds-label mb-2">Bio</p>
+                <p className="text-sm leading-relaxed text-gray-700">{profile.bio || "No bio yet."}</p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3 border-t border-gray-200 bg-gray-50 px-5 py-3">
+              <span className="ds-label">Session</span>
+              <Button variant="ghost" size="sm" icon="logout" onClick={handleLogout}>
+                Log out
+              </Button>
+            </div>
+          </Reveal>
+        </section>
+
+        {/* 03 · jobs */}
+        <section className="min-w-0">
+          <SectionHead
+            n="02"
+            title={isHospital ? "Jobs you posted" : "Applications"}
+            meta={`${isHospital ? postedJobs.length : appliedJobs.length} total`}
+            className="!mb-5"
+          />
+
+          {!isHospital && appliedJobs.length > 0 && <Tabs items={filterTabs} value={filter} onChange={setFilter} size="sm" label="Filter applications" className="mb-4" />}
+
+          <div className="ds-card overflow-hidden">
+            {isHospital ? (
+              postedJobs.length === 0 ? (
+                <EmptyState
+                  icon="work"
+                  title="No jobs posted yet"
+                  description="Post your first opening to start receiving applications from verified doctors."
+                  action={
+                    <Button to="/post-job" icon="add">
+                      Post a job
+                    </Button>
+                  }
                 />
-                <StatCard
-                  icon={<span className="material-symbols-outlined text-3xl">description</span>}
-                  label="Total Applications"
-                  value={stats.totalApplications}
-                  color="bg-green-100 text-green-700"
-                />
-                <StatCard
-                  icon={<span className="material-symbols-outlined text-3xl">check_circle</span>}
-                  label="Active Jobs"
-                  value={stats.activeJobs}
-                  color="bg-blue-100 text-blue-700"
-                />
-              </>
+              ) : (
+                <ul className="divide-y divide-gray-200">
+                  {postedJobs.map((job) => (
+                    <JobRow
+                      key={job.id}
+                      title={job.title}
+                      meta={[job.department, job.job_type].filter(Boolean).join(" · ")}
+                      date={job.created_at}
+                      dateLabel="Posted"
+                      link={`/jobs/${job.id}`}
+                    />
+                  ))}
+                </ul>
+              )
+            ) : appliedJobs.length === 0 ? (
+              <EmptyState
+                icon="bookmark"
+                title="No applications yet"
+                description="Browse openings from verified hospitals and apply in a few clicks."
+                action={
+                  <Button to="/search/jobs" icon="search">
+                    Find jobs
+                  </Button>
+                }
+              />
+            ) : filteredApplied.length === 0 ? (
+              <EmptyState icon="filter_alt_off" title={`No ${filter} applications`} description="Try another filter." />
             ) : (
-              <>
-                <StatCard
-                  icon={<span className="material-symbols-outlined text-3xl">description</span>}
-                  label="Jobs Applied"
-                  value={stats.totalApplied}
-                  color="bg-[var(--color-accent)] text-[var(--color-primary-dark)]"
-                />
-                <StatCard
-                  icon={<span className="material-symbols-outlined text-3xl">mail</span>}
-                  label="Responses Received"
-                  value={stats.totalResponses}
-                  color="bg-green-100 text-green-700"
-                />
-                <StatCard
-                  icon={<span className="material-symbols-outlined text-3xl">schedule</span>}
-                  label="Pending Applications"
-                  value={stats.pendingApplications}
-                  color="bg-yellow-100 text-yellow-700"
-                />
-              </>
+              <ul className="divide-y divide-gray-200">
+                {filteredApplied.map((app) => (
+                  <JobRow
+                    key={app.id}
+                    title={app.jobs?.title || "—"}
+                    meta={[app.jobs?.department, app.jobs?.job_type].filter(Boolean).join(" · ")}
+                    date={app.created_at || app.applied_at || null}
+                    dateLabel="Applied"
+                    link={`/jobs/view/${app.jobs?.id}`}
+                    status={statusOf(app)}
+                    interviewDate={app.interview_date || null}
+                  />
+                ))}
+              </ul>
             )}
           </div>
-
-          {/* CHARTS SECTION */}
-          {(postedJobs.length > 0 || appliedJobs.length > 0) && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 md:gap-8 mt-6 sm:mt-8">
-              {/* Application Status Distribution - Pie Chart (All roles) */}
-              {applicationStatusData.length > 0 && (
-                <div className="bg-gray-50 rounded-xl p-4 sm:p-6">
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3 sm:mb-4 text-center">
-                    {role === "hospital" ? "Application Status" : "Application Status"}
-                  </h3>
-                  <div className="flex justify-center">
-                    <PieChart 
-                      data={applicationStatusData} 
-                      colors={["#10b981", "#ef4444", "#f59e0b"]} 
-                      size={200} 
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Job Type Distribution - Pie Chart */}
-              {jobTypeData.length > 0 && (
-                <div className="bg-gray-50 rounded-xl p-4 sm:p-6">
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3 sm:mb-4 text-center">
-                    {role === "hospital" ? "Jobs by Type" : "Applications by Type"}
-                  </h3>
-                  <div className="flex justify-center">
-                    <PieChart data={jobTypeData} colors={chartColors} size={200} />
-                  </div>
-                </div>
-              )}
-
-              {/* Department Distribution - Pie Chart */}
-              {departmentData.length > 0 && (
-                <div className="bg-gray-50 rounded-xl p-4 sm:p-6">
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3 sm:mb-4 text-center">
-                    {role === "hospital" ? "Jobs by Department" : "Applications by Department"}
-                  </h3>
-                  <div className="flex justify-center">
-                    <PieChart data={departmentData} colors={chartColors} size={200} />
-                  </div>
-                </div>
-              )}
-
-              {/* Yearly Activity - Histogram */}
-              {monthlyData.length > 0 && (
-                <div className="bg-gray-50 rounded-xl p-4 sm:p-6 lg:col-span-2">
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3 sm:mb-4 text-center">
-                    {role === "hospital" ? "Yearly Application Trends" : "Yearly Application Trends"}
-                  </h3>
-                  <div className="overflow-x-auto">
-                    <Histogram data={monthlyData} colors={chartColors} height={200} />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* HOSPITAL DASHBOARD */}
-        {role === "hospital" && (
-          <Section title={
-            <span className="flex items-center gap-2">
-              <span className="material-symbols-outlined">local_hospital</span>
-              Jobs You Posted
-            </span>
-          }>
-            {postedJobs.length === 0 ? (
-              <Empty text="You have not posted any jobs yet." />
-            ) : (
-              postedJobs.map((job) => (
-                <JobCard
-                  key={job.id}
-                  title={job.title}
-                  subtitle={`${job.department} • ${job.job_type}`}
-                  date={job.created_at}
-                  link={`/jobs/${job.id}`}
-                />
-              ))
-            )}
-          </Section>
-        )}
-
-        {/* USER DASHBOARD */}
-        {role !== "hospital" && (
-          <Section title={
-            <span className="flex items-center gap-2">
-              <span className="material-symbols-outlined">bookmark</span>
-              Jobs You Applied To
-            </span>
-          }>
-            {appliedJobs.length === 0 ? (
-              <Empty text="You have not applied to any jobs yet." />
-            ) : (
-              appliedJobs.map((app) => (
-                <JobCard
-                  key={app.id}
-                  title={app.jobs?.title || "—"}
-                  subtitle={`${app.jobs?.department || ""} ${app.jobs?.job_type ? ` • ${app.jobs.job_type}` : ""}`}
-                  date={app.created_at || app.applied_at || null}
-                  link={`/jobs/view/${app.jobs?.id}`}
-                  status={app.verification_status || "pending"}
-                  interviewDate={app.interview_date || null}
-                />
-              ))
-            )}
-          </Section>
-        )}
-
-        {/* LOGOUT BUTTON */}
-        <div className="flex justify-center pt-6 sm:pt-8 pb-4">
-          <button
-            onClick={handleLogout}
-            className="px-6 sm:px-8 py-2.5 sm:py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold text-sm sm:text-base transition shadow-md hover:shadow-lg"
-          >
-            Logout
-          </button>
-        </div>
-
+        </section>
       </div>
-    </div>
+
+      {/* 04 · analytics */}
+      {hasActivity && (
+        <section className="mt-14">
+          <SectionHead n="03" title="Analytics" meta={isHospital ? "Applications" : "Your applications"} className="!mb-5" />
+          <div className="ds-hairline grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+            {applicationStatusData.length > 0 && (
+              <ChartCell title="Application status">
+                <PieChart data={applicationStatusData} colors={applicationStatusData.map((d) => d.color)} size={168} />
+              </ChartCell>
+            )}
+            {jobTypeData.length > 0 && (
+              <ChartCell title={isHospital ? "Jobs by type" : "Applications by type"}>
+                <PieChart data={jobTypeData} colors={chartColors} size={168} />
+              </ChartCell>
+            )}
+            {departmentData.length > 0 && (
+              <ChartCell title={isHospital ? "Jobs by department" : "Applications by department"}>
+                <PieChart data={departmentData} colors={chartColors} size={168} />
+              </ChartCell>
+            )}
+            {monthlyData.length > 0 && (
+              <ChartCell title="Application trend" meta="By month" className="md:col-span-2 lg:col-span-3">
+                <Histogram data={monthlyData} colors={chartColors} height={200} />
+              </ChartCell>
+            )}
+          </div>
+        </section>
+      )}
+    </Shell>
   );
 }
 
@@ -469,104 +403,85 @@ export default function Dashboard() {
    COMPONENTS
    ========================= */
 
-function Section({ title, children }) {
+function Shell({ children }) {
   return (
-    <div className="bg-white rounded-xl sm:rounded-2xl shadow p-4 sm:p-6">
-      <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-3 sm:mb-4">
-        {title}
-      </h3>
+    <div className="min-h-screen bg-gray-50">
+      <div className="ds-container py-10 sm:py-14">{children}</div>
+    </div>
+  );
+}
+
+function ChartCell({ title, meta, className, children }) {
+  return (
+    <div className={`min-w-0 p-5 sm:p-6 ${className || ""}`}>
+      <div className="mb-5 flex items-baseline justify-between gap-3">
+        <h3 className="ds-display text-[18px]">{title}</h3>
+        {meta && <span className="ds-label">{meta}</span>}
+      </div>
       {children}
     </div>
   );
 }
 
-function JobCard({ title, subtitle, date, link, status, interviewDate }) {
-  const statusColors = {
-    approved: "bg-green-100 text-green-800 border-green-200",
-    rejected: "bg-red-100 text-red-800 border-red-200",
-    pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  };
-  const statusLabels = {
-    approved: (
-      <span className="flex items-center gap-1">
-        <span className="material-symbols-outlined text-xs">check_circle</span>
-        Approved
-      </span>
-    ),
-    rejected: (
-      <span className="flex items-center gap-1">
-        <span className="material-symbols-outlined text-xs">cancel</span>
-        Rejected
-      </span>
-    ),
-    pending: (
-      <span className="flex items-center gap-1">
-        <span className="material-symbols-outlined text-xs">schedule</span>
-        Pending
-      </span>
-    ),
-  };
-
+function JobRow({ title, meta, date, dateLabel, link, status, interviewDate }) {
   return (
-    <a
-      href={link}
-      className="block border rounded-lg p-4 mb-3 hover:bg-gray-50 transition"
-    >
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <h4 className="font-semibold text-gray-800">{title}</h4>
-            {status && (
-              <span
-                className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${statusColors[status] || statusColors.pending}`}
-              >
-                {statusLabels[status] || "Pending"}
+    <li>
+      <Link to={link} className="group flex items-center gap-4 px-5 py-4 transition-colors duration-150 hover:bg-coral-50/60">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="truncate font-semibold text-gray-900 transition-colors duration-150 group-hover:text-coral-700">{title}</h4>
+            {status && <Badge tone={statusTone(status)}>{status}</Badge>}
+          </div>
+          {meta && <p className="mt-0.5 truncate text-sm capitalize text-gray-500">{meta}</p>}
+          <p className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] uppercase tracking-[0.08em] text-gray-500">
+            {date && (
+              <span>
+                {dateLabel} {new Date(date).toLocaleDateString()}
               </span>
             )}
-          </div>
-          <p className="text-sm text-gray-500">{subtitle}</p>
-          {date && (
-            <p className="text-xs text-gray-400 mt-1">
-              Applied on {new Date(date).toLocaleDateString()}
-            </p>
-          )}
-          {interviewDate && status === "approved" && (
-            <p className="text-xs text-green-600 mt-1 font-medium flex items-center gap-1">
-              <span className="material-symbols-outlined text-xs">event</span>
-              Interview: {new Date(interviewDate).toLocaleDateString()}
-            </p>
-          )}
+            {interviewDate && status === "approved" && (
+              <span className="flex items-center gap-1 text-emerald-700">
+                <Icon name="event" className="text-[14px]" />
+                Interview {new Date(interviewDate).toLocaleDateString()}
+              </span>
+            )}
+          </p>
         </div>
+        <Icon name="arrow_forward" className="text-gray-300 transition-[color,transform] duration-200 group-hover:translate-x-0.5 group-hover:text-primary" />
+      </Link>
+    </li>
+  );
+}
+
+function ProfileRow({ label, value, mono, wide }) {
+  return (
+    <div className={`min-w-0 bg-white px-5 py-3.5 ${wide ? "sm:col-span-2" : ""}`}>
+      <dt className="ds-label">{label}</dt>
+      <dd className={`mt-1 truncate text-sm text-gray-900 ${mono ? "font-mono" : "font-medium"}`}>{value || "—"}</dd>
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <Shell>
+      <div className="mb-8 space-y-3" aria-busy="true" aria-label="Loading dashboard">
+        <Skeleton className="h-3 w-32" />
+        <Skeleton className="h-10 w-72 max-w-full" />
+        <Skeleton className="h-4 w-96 max-w-full" />
       </div>
-    </a>
-  );
-}
-
-function ProfileRow({ label, value }) {
-  return (
-    <div>
-      <p className="text-gray-500">{label}</p>
-      <p className="font-medium text-gray-800">
-        {value || "-"}
-      </p>
-    </div>
-  );
-}
-
-function Empty({ text }) {
-  return (
-    <p className="text-gray-500 text-sm">
-      {text}
-    </p>
-  );
-}
-
-function StatCard({ icon, label, value, color }) {
-  return (
-    <div className={`${color} rounded-xl p-4 sm:p-6 text-center`}>
-      <div className="mb-2 sm:mb-3 flex justify-center">{icon}</div>
-      <div className="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2">{value}</div>
-      <div className="text-xs sm:text-sm font-medium opacity-80">{label}</div>
-    </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="ds-card space-y-3 p-5">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-8 w-16" />
+          </div>
+        ))}
+      </div>
+      <div className="mt-12 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
+        <SkeletonCard lines={5} />
+        <SkeletonCard lines={6} />
+      </div>
+    </Shell>
   );
 }
