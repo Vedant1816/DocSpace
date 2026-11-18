@@ -1,45 +1,36 @@
-export default function BarChart({ data, colors, height = 200 }) {
+import { motion } from "motion/react";
+import { dur, easeOut } from "../ui";
+
+/**
+ * Ranked horizontal bars: label, bar, value. Single series, one color.
+ * Bars grow with scaleX (transform only).
+ */
+export default function BarChart({ data, colors }) {
+  const color = colors?.[0] || "var(--color-primary)";
+
   if (!data || data.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-48 text-gray-400">
-        No data available
-      </div>
-    );
+    return <p className="flex h-48 items-center justify-center text-sm text-gray-400">No data yet</p>;
   }
 
-  const maxValue = Math.max(...data.map((item) => item.value), 1);
+  const maxValue = Math.max(...data.map((d) => d.value), 1);
 
   return (
-    <div className="w-full">
-      <div className="flex items-end justify-between gap-2 h-48 mb-4">
-        {data.map((item, index) => {
-          const barHeight = (item.value / maxValue) * 100;
-          const color = colors[index % colors.length];
-
-          return (
-            <div key={index} className="flex-1 flex flex-col items-center">
-              <div className="w-full flex flex-col items-center justify-end h-full">
-                <div
-                  className="w-full rounded-t transition-all hover:opacity-80 cursor-pointer"
-                  style={{
-                    height: `${barHeight}%`,
-                    backgroundColor: color,
-                    minHeight: item.value > 0 ? "4px" : "0",
-                  }}
-                  title={`${item.label}: ${item.value}`}
-                />
-              </div>
-              <div className="mt-2 text-xs text-gray-600 text-center">
-                {item.label}
-              </div>
-              <div className="text-xs font-semibold text-gray-800 mt-1">
-                {item.value}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+    <ul className="w-full space-y-3">
+      {data.map((d, i) => (
+        <li key={d.label} className="grid grid-cols-[minmax(0,8rem)_1fr_auto] items-center gap-3 text-sm" title={`${d.label}: ${d.value}`}>
+          <span className="truncate text-gray-700">{d.label}</span>
+          <span className="h-3 overflow-hidden rounded-r-[4px] bg-gray-100">
+            <motion.span
+              className="block h-full origin-left rounded-r-[4px]"
+              style={{ width: `${(d.value / maxValue) * 100}%`, backgroundColor: color }}
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ duration: dur.slow, ease: easeOut, delay: i * 0.04 }}
+            />
+          </span>
+          <span className="font-medium tabular-nums text-gray-900">{d.value}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
-

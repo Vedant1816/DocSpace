@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import Footer from "../components/Footer";
 import FeedColumn from "../components/FeedColumn";
 import API_BASE_URL from "../config/api.js";
-import hospitalImage from "../assets/image.png";
+import { HospitalVisual } from "../components/HeroVisual";
 import { Button, ArrowLink, Icon, Words, Reveal, SectionHead, Skeleton } from "../ui";
 
 const TOOLS = [
@@ -164,18 +164,9 @@ export default function HospitalHome() {
             </div>
           </div>
 
-          <Reveal className="relative mx-auto w-full max-w-lg">
-            <div className="ds-card overflow-hidden p-2">
-              <img src={hospitalImage} alt="Hospital staff reviewing records" className="aspect-square w-full rounded-[6px] object-cover" />
-            </div>
-            <div className="absolute -bottom-4 left-4 right-4 flex items-center gap-3 border border-gray-900 bg-white px-4 py-3 shadow-[var(--shadow-hard)] sm:left-auto sm:right-6">
-              <Icon name="psychology" className="text-primary" />
-              <p className="text-sm">
-                <span className="font-display text-lg font-medium text-gray-900">99%</span>
-                <span className="ds-label ml-2">AI verification accuracy</span>
-              </p>
-            </div>
-          </Reveal>
+          <div className="relative mx-auto w-full max-w-lg px-3 pb-6 sm:px-6">
+            <HospitalVisual />
+          </div>
         </div>
       </section>
 

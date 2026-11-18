@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
-import doctorBg from "../assets/doctor-bg.png";
 import logoMark from "../assets/1.png";
 import Footer from "../components/Footer";
 import FeedColumn from "../components/FeedColumn";
+import { DoctorVisual } from "../components/HeroVisual";
 import API_BASE_URL from "../config/api";
 import { Button, ArrowLink, Icon, Words, Reveal, SectionHead, CountUp, cn, dur, easeIn, easeOut } from "../ui";
 
@@ -246,30 +246,8 @@ export default function Home() {
             </motion.div>
           </div>
 
-          {/* peek frame */}
-          <motion.a
-            href="#network"
-            className="group relative hidden self-center lg:block"
-            initial={{ opacity: 0, y: 14 }}
-            animate={booting ? { opacity: 0 } : { opacity: 1, y: 0, transition: { duration: dur.slow, ease: easeOut, delay: 0.2 } }}
-            data-card
-          >
-            <span className="relative block aspect-[4/5] overflow-hidden outline outline-1 -outline-offset-1 outline-gray-900/15 shadow-[0_34px_70px_-30px_rgb(22_24_28/0.45)] transition-[outline-color,transform] duration-300 ease-[var(--ease-out)] group-hover:-translate-y-1 group-hover:outline-primary">
-              <img src={doctorBg} alt="Doctors collaborating" className="h-full w-full object-cover transition-transform duration-300 ease-[var(--ease-out)] group-hover:scale-[1.03]" />
-              <span className="absolute inset-0 bg-gradient-to-t from-gray-900/45 via-transparent to-transparent" />
-              <span className="absolute left-3 top-3 flex items-center gap-1.5 rounded bg-white/90 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-gray-800">
-                <i className="h-1.5 w-1.5 rounded-full bg-primary" /> Live network
-              </span>
-              <span className="absolute bottom-4 left-4 right-4 flex items-end justify-between text-white">
-                <b className="font-display text-2xl font-medium uppercase">DocSpace</b>
-                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/80">Verified · Secure</span>
-              </span>
-            </span>
-            <span className="mt-2.5 flex items-baseline justify-between">
-              <b className="ds-label !text-gray-900">The network</b>
-              <i className="ds-label not-italic">Doctors · Hospitals</i>
-            </span>
-          </motion.a>
+          {/* credential visual */}
+          <div className="relative hidden self-center px-6 pb-6 lg:block">{!booting && <DoctorVisual />}</div>
         </div>
       </section>
 
