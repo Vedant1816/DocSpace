@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import API_BASE_URL from "../config/api";
+import { Avatar, Badge, Button, EmptyState, Icon, SkeletonCard } from "../ui";
 
 export default function Profile() {
   const { id } = useParams();
@@ -33,161 +34,117 @@ export default function Profile() {
         setError(err.message || "Profile not available");
         setLoading(false);
       });
-  }, [id]);
+  }, [id, navigate]);
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500">Loading profile...</p>
-      </div>
+      <Shell>
+        <SkeletonCard lines={6} />
+      </Shell>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-red-500">{error}</p>
-      </div>
+      <Shell>
+        <div className="ds-card">
+          <EmptyState icon="person_off" title="Profile not available" description={error || "This profile may be private or removed."} />
+        </div>
+      </Shell>
     );
   }
 
+  const verified = data.verification_status === "approved" || data.verification_status === "verified";
+  const list = (v) => (Array.isArray(v) && v.length ? v : null);
+
   return (
-    <div className="min-h-screen bg-gray-100 py-6 sm:py-8 md:py-10 px-4 sm:px-6">
-      <div className="max-w-4xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-8">
-
-        {/* HEADER */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 mb-6 sm:mb-8">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-[var(--color-primary)] flex items-center justify-center text-white text-2xl sm:text-3xl font-bold flex-shrink-0">
-            {data.name?.charAt(0).toUpperCase()}
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 break-words">
-                {data.name}
-              </h1>
-              {/* Verification Status Badge */}
-              {data.verification_status === "approved" || data.verification_status === "verified" ? (
-                <span className="px-2 sm:px-3 py-1 bg-green-100 text-green-800 text-xs sm:text-sm font-semibold rounded-full flex items-center gap-1 w-fit">
-                  <span>✓</span> Verified
-                </span>
-              ) : (
-                <span className="px-2 sm:px-3 py-1 bg-yellow-100 text-yellow-800 text-xs sm:text-sm font-semibold rounded-full w-fit">
-                  Pending Verification
-                </span>
+    <Shell>
+      {/* HEADER */}
+      <div className="ds-card overflow-hidden">
+        <div className="grid-bg border-b border-gray-200 px-6 pb-6 pt-10 sm:px-8">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-end">
+            <Avatar name={data.name} size={88} className="ring-4 ring-white" />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="ds-display break-words text-[30px] sm:text-[40px]">{data.name}</h1>
+                {verified ? (
+                  <Badge tone="success" icon="verified">
+                    Verified
+                  </Badge>
+                ) : (
+                  <Badge tone="warning">Pending verification</Badge>
+                )}
+              </div>
+              <p className="ds-label mt-1">
+                {data.designation || "Doctor"} · {data.specialization || "Medical"}
+              </p>
+              {data.hospital_affiliation && (
+                <p className="mt-2 flex items-center gap-1.5 text-sm text-gray-600">
+                  <Icon name="local_hospital" className="text-[18px] text-gray-400" />
+                  {data.hospital_affiliation}
+                </p>
               )}
             </div>
-            <p className="text-sm sm:text-base text-gray-600">
-              {data.designation || "Doctor"} • {data.specialization || "Medical"}
-            </p>
-            {data.hospital_affiliation && (
-              <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                🏥 {data.hospital_affiliation}
-              </p>
-            )}
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
-            <button
-              onClick={() => navigate(`/resume/${id}`)}
-              className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-lg transition-all text-xs sm:text-sm font-medium"
-              title="View Full Resume"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4 sm:h-5 sm:w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-              <span className="hidden sm:inline">View Resume</span>
-              <span className="sm:hidden">Resume</span>
-            </button>
-            <button
-              onClick={() => navigate(`/chat/${id}`)}
-              className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white rounded-full shadow-lg transition-all hover:scale-110 flex-shrink-0"
-              title="Send Message"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5 sm:h-6 sm:w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                />
-              </svg>
-            </button>
+            <div className="flex gap-2">
+              <Button variant="secondary" icon="description" onClick={() => navigate(`/resume/${id}`)}>
+                Resume
+              </Button>
+              <Button icon="chat" onClick={() => navigate(`/chat/${id}`)}>
+                Message
+              </Button>
+            </div>
           </div>
         </div>
 
         {/* BIO */}
-        <Section title="About">
-          <p className="text-gray-700 leading-relaxed">
-            {data.bio || "No bio provided."}
-          </p>
-        </Section>
+        <section className="border-b border-gray-200 px-6 py-6 sm:px-8">
+          <h2 className="ds-label mb-3 !text-gray-900">About</h2>
+          <p className="whitespace-pre-line leading-relaxed text-gray-700">{data.bio || "No bio provided."}</p>
+        </section>
 
         {/* DETAILS */}
-        <Section title="Professional Details">
-          <Detail label="Specialization" value={data.specialization} />
-          <Detail
-            label="Qualifications"
-            value={
-              Array.isArray(data.qualifications)
-                ? data.qualifications.join(", ")
-                : "-"
-            }
-          />
-          <Detail
-            label="Skills"
-            value={
-              Array.isArray(data.skills)
-                ? data.skills.join(", ")
-                : "-"
-            }
-          />
-        </Section>
+        <section className="grid gap-px bg-[var(--color-line-soft)] md:grid-cols-3">
+          <Detail label="Specialization">{data.specialization || "—"}</Detail>
+          <Detail label="Qualifications">
+            <Tags items={list(data.qualifications)} />
+          </Detail>
+          <Detail label="Skills">
+            <Tags items={list(data.skills)} />
+          </Detail>
+        </section>
       </div>
-    </div>
+    </Shell>
   );
 }
 
 /* ================= UI HELPERS ================= */
 
-function Section({ title, children }) {
+function Shell({ children }) {
   return (
-    <div className="mb-6 sm:mb-8">
-      <h2 className="text-lg sm:text-xl font-semibold text-gray-800 mb-2 sm:mb-3">
-        {title}
-      </h2>
-      <div className="bg-gray-50 p-3 sm:p-4 rounded-lg">
-        {children}
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="ds-container max-w-4xl py-10 sm:py-14">{children}</div>
     </div>
   );
 }
 
-function Detail({ label, value }) {
+function Detail({ label, children }) {
   return (
-    <div className="mb-2 sm:mb-3">
-      <p className="text-xs sm:text-sm text-gray-500">{label}</p>
-      <p className="text-sm sm:text-base text-gray-800 font-medium">
-        {value || "-"}
-      </p>
+    <div className="bg-white px-6 py-5 sm:px-8">
+      <p className="ds-label mb-2">{label}</p>
+      <div className="text-sm font-medium text-gray-900">{children}</div>
     </div>
+  );
+}
+
+function Tags({ items }) {
+  if (!items) return <span className="text-gray-500">—</span>;
+  return (
+    <ul className="flex flex-wrap gap-1.5">
+      {items.map((t) => (
+        <li key={t} className="rounded-[4px] border border-gray-200 px-2 py-1 font-normal text-gray-800">
+          {t}
+        </li>
+      ))}
+    </ul>
   );
 }

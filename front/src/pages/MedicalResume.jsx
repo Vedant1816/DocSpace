@@ -1,161 +1,185 @@
 import { useEffect, useState } from "react";
 import API_BASE_URL from "../config/api.js";
+import { Avatar, Badge, Button, EmptyState, Field, Icon, PageHeader, SelectField, SkeletonCard, TextArea, statusTone, useToast } from "../ui";
 
 /* ================= MAIN ================= */
 
 export default function MedicalResume() {
   const [data, setData] = useState(null);
   const [editMode, setEditMode] = useState(false);
-  const [loading, setLoading] = useState(true);
+  // No token: nothing to fetch, so start out not loading.
+  const [loading, setLoading] = useState(() => !!localStorage.getItem("token"));
 
- useEffect(() => {
-  const token = localStorage.getItem("token");
-  if (!token) {
-    setLoading(false);
-    return;
-  }
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
 
-  fetch(`${API_BASE_URL}/profile/medical-resume`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-    .then((res) => res.json())
-    .then((res) => {
-      setData(res);
-      setEditMode(false);
-      setLoading(false);
+    fetch(`${API_BASE_URL}/profile/medical-resume`, {
+      headers: { Authorization: `Bearer ${token}` },
     })
-    .catch(() => setLoading(false));
-}, []);
-
+      .then((res) => res.json())
+      .then((res) => {
+        setData(res);
+        setEditMode(false);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500">Loading...</p>
-      </div>
+      <Shell>
+        <SkeletonCard lines={8} />
+      </Shell>
     );
   }
 
   if (!data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500">No profile data found</p>
-      </div>
+      <Shell>
+        <div className="ds-card">
+          <EmptyState icon="description" title="No profile data found" description="We couldn't load your medical resume. Try again in a moment." />
+        </div>
+      </Shell>
     );
   }
-  
-  const isEditLocked =
-  data?.verification_status === "pending" ||
-  data?.verification_status === "approved";
+
+  const isEditLocked = data?.verification_status === "pending" || data?.verification_status === "approved";
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-100 px-4 sm:px-6 py-6 sm:py-8 md:py-10 flex justify-center">
-      <div className="w-full max-w-5xl bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 md:p-8">
-        {isEditLocked && (
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-            {data.verification_status === "pending"
-             ? "Your profile is currently under verification. Editing is temporarily disabled."
-             : "Your profile has been verified. Editing is no longer allowed."}
-          </div>
-        )}
+    <Shell>
+      <PageHeader
+        eyebrow="Your profile"
+        title={editMode ? "Edit resume" : "Medical resume"}
+        description="One structured resume that verified hospitals can review."
+        actions={
+          !editMode && (
+            <Button icon="edit" onClick={() => setEditMode(true)} disabled={isEditLocked}>
+              Edit resume
+            </Button>
+          )
+        }
+      />
 
-        {!data.profile_completed && (
-          <div className="mb-3 sm:mb-4 p-2.5 sm:p-3 bg-yellow-50 text-yellow-800 rounded-lg text-xs sm:text-sm">
-            Your profile is not complete. Please fill and submit.
-          </div>
-        )}
+      {isEditLocked && (
+        <Notice tone="info" icon="lock">
+          {data.verification_status === "pending"
+            ? "Your profile is currently under verification. Editing is temporarily disabled."
+            : "Your profile has been verified. Editing is no longer allowed."}
+        </Notice>
+      )}
 
-        {editMode ? (
-          <EditResume
-            data={data}
-            onSaved={(updated) => {
-              setData(updated);
-              setEditMode(false);
-            }}
-          />
-        ) : (
-          <ViewResume
-           data={data}
-           onEdit={() => setEditMode(true)}
-           editLocked={isEditLocked}
-          />
-        )}
-      </div>
+      {!data.profile_completed && (
+        <Notice tone="warning" icon="warning">
+          Your profile is not complete. Please fill and submit.
+        </Notice>
+      )}
+
+      {editMode ? (
+        <EditResume
+          data={data}
+          onCancel={() => setEditMode(false)}
+          onSaved={(updated) => {
+            setData(updated);
+            setEditMode(false);
+          }}
+        />
+      ) : (
+        <ViewResume data={data} />
+      )}
+    </Shell>
+  );
+}
+
+function Shell({ children }) {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="ds-container max-w-5xl py-10 sm:py-14">{children}</div>
     </div>
+  );
+}
+
+function Notice({ tone, icon, children }) {
+  const cls = tone === "warning" ? "border-amber-400 bg-amber-50 text-amber-900" : "border-indigo-400 bg-indigo-50 text-indigo-900";
+  return (
+    <p className={`mb-4 flex items-start gap-2 border-l-2 px-4 py-3 text-sm ${cls}`}>
+      <Icon name={icon} className="text-[18px]" />
+      {children}
+    </p>
   );
 }
 
 /* ================= VIEW MODE ================= */
 
-function ViewResume({ data, onEdit, editLocked }) {
+function ViewResume({ data }) {
+  const list = (v) => (Array.isArray(v) && v.length ? v : null);
   return (
-    <>
-      <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-4 sm:mb-6">
-        🩺 Medical Resume
-      </h2>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-        <ResumeRow label="Role" value={data.role} />
-        <ResumeRow label="Name" value={data.name} />
-        <ResumeRow label="Email" value={data.email} />
-        <ResumeRow label="Phone" value={data.phone} />
-        <ResumeRow label="Designation" value={data.designation} />
-        <ResumeRow label="Specialization" value={data.specialization} />
-        <ResumeRow label="Registration Number" value={data.registration_number} />
-        <ResumeRow label="Year of Graduation" value={data.year_of_graduation || "-"} />
-        <ResumeRow
-          label="Years of Experience"
-          value={data.years_of_experience ? `${data.years_of_experience} years` : "-"}
-        />
-        <ResumeRow label="Hospital / Clinic" value={data.hospital_affiliation} />
-        <ResumeRow
-          label="Qualifications"
-          value={Array.isArray(data.qualifications) ? data.qualifications.join(", ") : "-"}
-        />
-        <ResumeRow
-          label="Skills"
-          value={Array.isArray(data.skills) ? data.skills.join(", ") : "-"}
-        />
+    <div className="ds-card overflow-hidden">
+      <div className="flex flex-col gap-4 border-b border-gray-200 p-6 sm:flex-row sm:items-center">
+        <Avatar name={data.name} size={56} />
+        <div className="min-w-0 flex-1">
+          <p className="font-display text-2xl font-medium uppercase tracking-tight text-gray-900">{data.name || "—"}</p>
+          <p className="ds-label mt-0.5">{[data.designation, data.specialization].filter(Boolean).join(" · ") || data.role}</p>
+        </div>
+        {data.verification_status && <Badge tone={statusTone(data.verification_status)}>{data.verification_status}</Badge>}
       </div>
 
-      <div className="mt-4 sm:mt-6">
-        <p className="text-xs sm:text-sm text-gray-500 mb-1">Bio</p>
-        <p className="bg-gray-50 p-3 sm:p-4 rounded-lg text-gray-800 text-sm sm:text-base">
-          {data.bio || "-"}
-        </p>
+      <dl className="grid grid-cols-1 gap-px bg-[var(--color-line-soft)] sm:grid-cols-2 lg:grid-cols-3">
+        <Row label="Role" value={data.role} capitalize />
+        <Row label="Email" value={data.email} />
+        <Row label="Phone" value={data.phone} />
+        <Row label="Registration no." value={data.registration_number} mono />
+        <Row label="Year of graduation" value={data.year_of_graduation} mono />
+        <Row label="Experience" value={data.years_of_experience ? `${data.years_of_experience} years` : null} />
+        <Row label="Hospital / clinic" value={data.hospital_affiliation} />
+      </dl>
+
+      <div className="grid gap-px border-t border-gray-200 bg-[var(--color-line-soft)] md:grid-cols-2">
+        <Chips label="Qualifications" items={list(data.qualifications)} />
+        <Chips label="Skills" items={list(data.skills)} />
       </div>
 
-      <button
-        onClick={onEdit}
-        disabled={editLocked}
-        className={`mt-6 sm:mt-8 w-full py-2.5 sm:py-3 rounded-lg font-semibold text-sm sm:text-base transition
-        ${
-           editLocked
-           ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-            : "bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white"
-         }
-         `}
-      >
-        Edit Resume
-      </button>
-    </>
+      <div className="border-t border-gray-200 p-6">
+        <p className="ds-label mb-2">Bio</p>
+        <p className="whitespace-pre-line text-[15px] leading-relaxed text-gray-700">{data.bio || "—"}</p>
+      </div>
+    </div>
   );
 }
 
-function ResumeRow({ label, value }) {
+function Row({ label, value, mono, capitalize }) {
   return (
-    <div>
-      <p className="text-xs sm:text-sm text-gray-500">{label}</p>
-      <p className="font-medium text-gray-800 capitalize text-sm sm:text-base">
-        {value || "-"}
-      </p>
+    <div className="min-w-0 bg-white px-6 py-4">
+      <dt className="ds-label">{label}</dt>
+      <dd className={`mt-1 break-words text-sm text-gray-900 ${mono ? "font-mono" : "font-medium"} ${capitalize ? "capitalize" : ""}`}>{value || "—"}</dd>
+    </div>
+  );
+}
+
+function Chips({ label, items }) {
+  return (
+    <div className="bg-white px-6 py-4">
+      <p className="ds-label mb-2">{label}</p>
+      {items ? (
+        <ul className="flex flex-wrap gap-1.5">
+          {items.map((q) => (
+            <li key={q} className="rounded-[4px] border border-gray-200 px-2 py-1 text-sm text-gray-800">
+              {q}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-gray-500">—</p>
+      )}
     </div>
   );
 }
 
 /* ================= EDIT MODE ================= */
 
-function EditResume({ data, onSaved }) {
+function EditResume({ data, onSaved, onCancel }) {
+  const toast = useToast();
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     role: data.role || "",
     name: data.name || "",
@@ -167,14 +191,11 @@ function EditResume({ data, onSaved }) {
     year_of_graduation: data.year_of_graduation || "",
     years_of_experience: data.years_of_experience || "",
     hospital_affiliation: data.hospital_affiliation || "",
-    qualifications: Array.isArray(data.qualifications)
-      ? data.qualifications.join(", ")
-      : "",
-    skills: Array.isArray(data.skills)
-      ? data.skills.join(", ")
-      : "",
+    qualifications: Array.isArray(data.qualifications) ? data.qualifications.join(", ") : "",
+    skills: Array.isArray(data.skills) ? data.skills.join(", ") : "",
     bio: data.bio || "",
   });
+  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -184,121 +205,90 @@ function EditResume({ data, onSaved }) {
       ...form,
       year_of_graduation: form.year_of_graduation ? Number(form.year_of_graduation) : null,
       years_of_experience: form.years_of_experience ? Number(form.years_of_experience) : null,
-      qualifications: form.qualifications.split(",").map(q => q.trim()).filter(Boolean),
-      skills: form.skills.split(",").map(s => s.trim()).filter(Boolean),
-      submit: true, // 🔒 ALWAYS submit
+      qualifications: form.qualifications.split(",").map((q) => q.trim()).filter(Boolean),
+      skills: form.skills.split(",").map((s) => s.trim()).filter(Boolean),
+      submit: true, // ALWAYS submit
     };
 
     delete payload.email;
 
-    const res = await fetch(`${API_BASE_URL}/profile/medical-resume`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/profile/medical-resume`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
 
-    if (!res.ok) {
-      alert("Failed to submit profile");
-      return;
+      if (!res.ok) {
+        toast.error("Failed to submit profile");
+        return;
+      }
+
+      const refreshed = await fetch(`${API_BASE_URL}/profile/medical-resume`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const updatedData = await refreshed.json();
+
+      toast.success("Profile submitted successfully");
+      onSaved(updatedData);
+    } finally {
+      setSaving(false);
     }
-
-    const refreshed = await fetch(`${API_BASE_URL}/profile/medical-resume`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    const updatedData = await refreshed.json();
-
-    alert("Profile submitted successfully!");
-    onSaved(updatedData);
   };
 
   return (
-    <>
-      <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-4 sm:mb-6">
-        ✏️ Edit Medical Resume
-      </h2>
+    <form onSubmit={handleSubmit} className="ds-card overflow-hidden">
+      <Group n="01" title="Identity">
+        <SelectField label="Role" value={form.role} onChange={set("role")} required>
+          <option value="">Select role</option>
+          <option value="doctor">Doctor</option>
+          <option value="nurse">Nurse</option>
+          <option value="medical_worker">Medical worker</option>
+        </SelectField>
+        <Field label="Name" value={form.name} onChange={set("name")} required />
+        <Field label="Email" value={form.email} disabled hint="Email can't be changed here." />
+        <Field label="Phone" type="tel" value={form.phone} onChange={set("phone")} required />
+      </Group>
 
-      <form
-        onSubmit={handleSubmit}
-        className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4"
-      >
-        {/* Role - Select Field */}
-        <div>
-          <label className="block text-xs sm:text-sm text-gray-500 mb-1">
-            Role <span className="text-red-500">*</span>
-          </label>
-          <select
-            value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value })}
-            className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-            required
-          >
-            <option value="">Select role</option>
-            <option value="doctor">Doctor</option>
-            <option value="nurse">Nurse</option>
-            <option value="medical_worker">Medical Worker</option>
-          </select>
-        </div>
+      <Group n="02" title="Practice">
+        <Field label="Designation" value={form.designation} onChange={set("designation")} required />
+        <Field label="Specialization" value={form.specialization} onChange={set("specialization")} required />
+        <Field label="Registration number" value={form.registration_number} onChange={set("registration_number")} required />
+        <Field label="Hospital / clinic" value={form.hospital_affiliation} onChange={set("hospital_affiliation")} required />
+        <Field label="Year of graduation" type="number" value={form.year_of_graduation} onChange={set("year_of_graduation")} required />
+        <Field label="Years of experience" type="number" value={form.years_of_experience} onChange={set("years_of_experience")} required />
+      </Group>
 
-        <Input label="Name" value={form.name} onChange={v => setForm({ ...form, name: v })} required />
-        <Input label="Email" value={form.email} disabled />
-        <Input label="Phone" value={form.phone} onChange={v => setForm({ ...form, phone: v })} required />
-        <Input label="Designation" value={form.designation} onChange={v => setForm({ ...form, designation: v })} required />
-        <Input label="Specialization" value={form.specialization} onChange={v => setForm({ ...form, specialization: v })} required />
-        <Input label="Registration Number" value={form.registration_number} onChange={v => setForm({ ...form, registration_number: v })} required />
-        <Input label="Year of Graduation" type="number" value={form.year_of_graduation} onChange={v => setForm({ ...form, year_of_graduation: v })} required />
-        <Input label="Years of Experience" type="number" value={form.years_of_experience} onChange={v => setForm({ ...form, years_of_experience: v })} required />
-        <Input label="Hospital / Clinic" value={form.hospital_affiliation} onChange={v => setForm({ ...form, hospital_affiliation: v })} required />
-        <Input label="Qualifications" value={form.qualifications} onChange={v => setForm({ ...form, qualifications: v })} required />
-        <Input label="Skills" value={form.skills} onChange={v => setForm({ ...form, skills: v })} required />
+      <Group n="03" title="Background">
+        <Field label="Qualifications" value={form.qualifications} onChange={set("qualifications")} hint="Comma separated, e.g. MBBS, MD" required />
+        <Field label="Skills" value={form.skills} onChange={set("skills")} hint="Comma separated" required />
+        <TextArea label="Bio" rows={4} value={form.bio} onChange={set("bio")} required className="md:col-span-2" />
+      </Group>
 
-        <div className="md:col-span-2">
-          <label className="block text-xs sm:text-sm text-gray-500 mb-1">
-            Bio <span className="text-red-500">*</span>
-          </label>
-          <textarea
-            className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-            rows={4}
-            value={form.bio}
-            onChange={(e) => setForm({ ...form, bio: e.target.value })}
-            required
-          />
-        </div>
-
-        <div className="md:col-span-2 mt-3 sm:mt-4">
-          <button
-            type="submit"
-            className="w-full bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white py-2.5 sm:py-3 rounded-lg font-semibold text-sm sm:text-base transition"
-          >
-            Submit Profile
-          </button>
-        </div>
-      </form>
-    </>
+      <div className="flex flex-col-reverse gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4 sm:flex-row sm:justify-end">
+        <Button variant="outline" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+        <Button type="submit" loading={saving} iconRight="arrow_forward">
+          Submit profile
+        </Button>
+      </div>
+    </form>
   );
 }
 
-/* ================= INPUT ================= */
-
-function Input({ label, value, onChange, type = "text", disabled = false, required = false }) {
+function Group({ n, title, children }) {
   return (
-    <div>
-      <label className="block text-xs sm:text-sm text-gray-500 mb-1">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <input
-        type={type}
-        value={value}
-        disabled={disabled}
-        required={required}
-        onChange={(e) => onChange?.(e.target.value)}
-        className={`w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-          disabled ? "bg-gray-100 cursor-not-allowed" : ""
-        }`}
-      />
-    </div>
+    <fieldset className="border-b border-gray-200 p-6 last-of-type:border-b-0">
+      <legend className="ds-label float-left mb-5 w-full">
+        <b className="font-medium text-coral-600">{n}</b> — {title}
+      </legend>
+      <div className="clear-both grid grid-cols-1 gap-5 md:grid-cols-2">{children}</div>
+    </fieldset>
   );
 }
